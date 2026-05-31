@@ -1,0 +1,831 @@
+/* ══════════════════════════════════════════════════
+   MalariaWatch — App Logic
+   Simulated IoT: TX1, TX2 (LoRa emitters) + RX (receiver)
+   IRM: Índice de Risco de Malária
+══════════════════════════════════════════════════ */
+'use strict';
+
+/* ── CONFIG ── */
+const CFG = {
+  interval: 5000,
+  irmMed: 35,
+  irmHigh: 65,
+  histMax: 22,
+  evtMax:  50,
+  useRealData: true, // Switched to true for real Firebase integration
+  apiEndpoint: '' 
+};
+
+const SIM = {
+  normal: { tR:[24,34], hR:[56,84], wP:.15, offP:.03 },
+  stress: { tR:[31,40], hR:[76,98], wP:.80, offP:.05 },
+  safe:   { tR:[18,26], hR:[28,52], wP:.02, offP:.01 },
+  tx2off: { tR:[24,34], hR:[56,84], wP:.20, offP:.0, tx2off:true },
+};
+let simMode = 'normal';
+
+/* ── STATE ── */
+const S = {
+  tx1: { t:0, h:0, w:false, rssi:-110, on:false },
+  tx2: { t:0, h:0, w:false, rssi:-110, on:false },
+  rx:  { pkts:0, sync:'--:--:--', wifi:true, lora:false },
+  irm: 0, risk:'low',
+  hist: { lbl:[], t1:[], t2:[], hum:[], irm:[] },
+  events: [], alerts: [],
+  uptime: 0, crcErr: 0,
+};
+
+/* Sparkline history */
+const spk1H = [], spk2H = [];
+const histLog = [];
+let timer;
+
+/* ── UTILS ── */
+const rand  = (a,b) => +(Math.random()*(b-a)+a).toFixed(1);
+const randI = (a,b) => Math.floor(Math.random()*(b-a+1))+a;
+const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
+const now   = () => new Date().toLocaleTimeString('pt-BR',{hour12:false});
+const today = () => new Date().toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
+
+/* ══════════════════════════════════════════════════
+   PRELOADER
+══════════════════════════════════════════════════ */
+const PL_MSGS = [
+  'Inicializando módulos...','Conectando ao receptor RX...',
+  'Sincronizando emissores LoRa...','Carregando algoritmo IRM...','Sistema pronto.'
+];
+function startPreloader(){
+  let i=0;
+  const el = document.getElementById('pl-msg');
+  const iv = setInterval(()=>{ if(el && i<PL_MSGS.length) el.textContent=PL_MSGS[i++]; else clearInterval(iv); },480);
+  setTimeout(()=>{ document.getElementById('preloader').classList.add('gone'); boot(); },2600);
+}
+
+/* ══════════════════════════════════════════════════
+   CLOCK
+══════════════════════════════════════════════════ */
+function startClock(){
+  const tick=()=>{
+    const c=document.getElementById('clock'); const d=document.getElementById('cdate');
+    if(c) c.textContent=now(); if(d) d.textContent=today();
+  };
+  tick(); setInterval(tick,1000);
+}
+
+/* ══════════════════════════════════════════════════
+   SIDEBAR / NAV
+══════════════════════════════════════════════════ */
+window.toggleSidebar = ()=>{ document.getElementById('sidebar').classList.toggle('open'); document.getElementById('overlay').classList.toggle('open'); };
+window.closeSidebar  = ()=>{ document.getElementById('sidebar').classList.remove('open'); document.getElementById('overlay').classList.remove('open'); };
+
+function initNav(){
+  document.querySelectorAll('.sb-item').forEach(el=>{
+    el.addEventListener('click',e=>{
+      e.preventDefault();
+      const sec = el.dataset.sec;
+      document.querySelectorAll('.sb-item').forEach(x=>x.classList.remove('active'));
+      el.classList.add('active');
+      document.querySelectorAll('.sec').forEach(x=>x.classList.remove('active'));
+      const s=document.getElementById('sec-'+sec);
+      if(s){ 
+        s.classList.add('active'); 
+        if(sec==='historico') drawIrmHistChart();
+        if(sec==='avisos-malaria') renderMalariaWarnings();
+      }
+      closeSidebar();
+    });
+  });
+}
+
+/* ══════════════════════════════════════════════════
+   IRM CALCULATION
+══════════════════════════════════════════════════ */
+function calcIRM(a,b){
+  const t = (a.t+b.t)/2, h=(a.h+b.h)/2;
+  const water = (a.w?1:0)+(b.w?1:0);
+  /* Temperature score: optimal 25–35°C for Anopheles */
+  let ts=0;
+  if(t>=25&&t<=35)    ts=40*(1-Math.abs(t-30)/10);
+  else if(t>35)       ts=Math.max(0,40-(t-35)*3);
+  else                ts=Math.max(0,20-(25-t)*4);
+  /* Humidity score */
+  const hs=clamp((h-40)/60*35,0,35);
+  /* Water score */
+  const ws=water*12.5;
+  return Math.round(clamp(ts+hs+ws,0,100));
+}
+
+function riskOf(irm){
+  const med  = parseInt(document.getElementById('cfg-med')?.value  || CFG.irmMed);
+  const high = parseInt(document.getElementById('cfg-high')?.value || CFG.irmHigh);
+  return irm>=high?'high':irm>=med?'medium':'low';
+}
+
+const riskPT = r=>({low:'BAIXO',medium:'MÉDIO',high:'ALTO'}[r]||'--');
+
+/* ══════════════════════════════════════════════════
+   DATA ACQUISITION (FIREBASE INTEGRATION)
+══════════════════════════════════════════════════ */
+
+function initFirebase() {
+  VigiMat.init();
+  VigiMat.firebase.onReadingsUpdate((rawReadings) => {
+    if (rawReadings.length > 0) {
+      const result = VigiMat.processData(rawReadings);
+      applyVigiMatToState(result);
+      renderAll();
+    }
+  });
+}
+
+function applyVigiMatToState(result) {
+  const latest = result.readings[0] || {};
+  
+  // Map VigiMat data to existing UI state S
+  S.tx1 = { 
+    t: latest.temp1 || 0, 
+    h: latest.hum1 || 0, 
+    w: (latest.rain1 < 2000), // Assuming lower value means water present (typical for these sensors)
+    rssi: -60, // Fixed placeholder as DB doesn't have it
+    on: !!latest.temp1 
+  };
+  
+  S.tx2 = { 
+    t: latest.temp2 || 0, 
+    h: latest.hum2 || 0, 
+    w: (latest.rain2 < 2000), 
+    rssi: -65, 
+    on: !!latest.temp2 
+  };
+
+  // Convert VigiMat risk assessment to IRM scale (0-100)
+  S.irm = result.summary.currentRisk === "ALTO" ? 85 : result.summary.currentRisk === "MEDIO" ? 50 : 20;
+  S.risk = result.summary.currentRisk.toLowerCase();
+  
+  // Sync totals and metadata
+  S.rx.pkts = result.summary.totalReadings;
+  S.rx.sync = new Date((latest.timestamp || 0) * 1000).toLocaleTimeString();
+  S.rx.lora = S.tx1.on || S.tx2.on;
+
+  // Sync Alerts with Deduplication
+  const incomingAlerts = result.alerts.map(a => ({
+    title: a.title,
+    msg: a.message,
+    sev: a.severity,
+    icon: a.icon,
+    time: new Date(a.timestamp * 1000).toLocaleTimeString('pt-BR', {hour12:false}),
+    rawTime: a.timestamp
+  }));
+
+  incomingAlerts.forEach(na => {
+    const exists = S.alerts.some(oa => oa.rawTime === na.rawTime && oa.title === na.title);
+    if (!exists) {
+      S.alerts.unshift(na);
+      showToast(na.title, na.msg, na.sev, na.icon);
+      addEvt('SISTEMA', na.title, na.msg, na.sev === 'danger' ? 'danger' : 'warn');
+    }
+  });
+
+  // Keep last 20 alerts in history
+  S.alerts = S.alerts.slice(0, 20);
+  
+  updateBadge();
+  renderAlertLog();
+
+  // Sync to District Warnings (Avisos de Risco)
+  if (DISTRICTS_WARNINGS[0]) {
+    DISTRICTS_WARNINGS[0].temp = S.tx1.t;
+    DISTRICTS_WARNINGS[0].hum = S.tx1.h;
+    DISTRICTS_WARNINGS[0].water = S.tx1.w;
+    DISTRICTS_WARNINGS[0].irm = Math.round(S.irm * 0.9); // Simulated variation for sensor 1
+    DISTRICTS_WARNINGS[0].risk = riskOf(DISTRICTS_WARNINGS[0].irm);
+    DISTRICTS_WARNINGS[0].lastUpdate = now();
+  }
+  if (DISTRICTS_WARNINGS[1]) {
+    DISTRICTS_WARNINGS[1].temp = S.tx2.t;
+    DISTRICTS_WARNINGS[1].hum = S.tx2.h;
+    DISTRICTS_WARNINGS[1].water = S.tx2.w;
+    DISTRICTS_WARNINGS[1].irm = Math.round(S.irm * 1.1); // Simulated variation for sensor 2
+    DISTRICTS_WARNINGS[1].risk = riskOf(DISTRICTS_WARNINGS[1].irm);
+    DISTRICTS_WARNINGS[1].lastUpdate = now();
+  }
+  renderMalariaWarnings();
+
+  // Populate history for charts
+  S.hist.lbl = result.chartData.temperature.map(d => d.timestamp).slice(-CFG.histMax);
+  S.hist.t1 = result.readings.map(r => r.temp1).reverse().slice(-CFG.histMax);
+  S.hist.t2 = result.readings.map(r => r.temp2).reverse().slice(-CFG.histMax);
+  S.hist.hum = result.chartData.humidity.map(d => d.value).slice(-CFG.histMax);
+  S.hist.irm = result.chartData.risk.map(d => d.value * 33).slice(-CFG.histMax); // Map 1,2,3 to 0-100 scale
+}
+
+/**
+ * Legacy simulation wrapper.
+ * In Firebase mode, this becomes a manual refresh if needed.
+ */
+async function simulate() {
+  if (!CFG.useRealData) {
+    // Logic for simulation if still needed
+  }
+}
+
+/* ══════════════════════════════════════════════════
+   EVENTS & ALERTS
+══════════════════════════════════════════════════ */
+function doAlerts(prev1,prev2){
+  /* Water */
+  if(S.tx1.w  &&!prev1.w) { addEvt('TX1','Água detectada',`${S.tx1.t}°C/${S.tx1.h}%`,'danger'); pushAlert('Água Detectada — TX1',`TX1 detectou presença de água. T:${S.tx1.t}°C H:${S.tx1.h}%`,'danger','water'); }
+  if(S.tx2.on&&S.tx2.w&&!prev2.w){ addEvt('TX2','Água detectada',`${S.tx2.t}°C/${S.tx2.h}%`,'danger'); pushAlert('Água Detectada — TX2',`TX2 detectou presença de água. T:${S.tx2.t}°C H:${S.tx2.h}%`,'danger','water'); }
+  /* Offline */
+  if(!S.tx1.on&&prev1.on){ addEvt('TX1','Emissor offline','Sem resposta LoRa','danger'); pushAlert('TX1 Offline','Emissor TX1 perdeu comunicação LoRa.','danger','signal'); }
+  if(!S.tx2.on&&prev2.on){ addEvt('TX2','Emissor offline','Sem resposta LoRa','danger'); pushAlert('TX2 Offline','Emissor TX2 perdeu comunicação LoRa.','danger','signal'); }
+  /* Back online */
+  if(S.tx1.on&&!prev1.on){ addEvt('TX1','Online','Comunicação restaurada','ok'); pushAlert('TX1 Restaurado','Comunicação LoRa com TX1 restabelecida.','info','check'); }
+  if(S.tx2.on&&!prev2.on){ addEvt('TX2','Online','Comunicação restaurada','ok'); pushAlert('TX2 Restaurado','Comunicação LoRa com TX2 restabelecida.','info','check'); }
+  /* IRM level change */
+  const prev=riskOf(S.hist.irm.slice(-2)[0]||0);
+  if(S.risk!==prev){
+    addEvt('Sistema','IRM alterado',`${S.irm}/100 — ${riskPT(S.risk)}`,S.risk==='high'?'danger':S.risk==='medium'?'warn':'ok');
+    if(S.risk==='high')   pushAlert('RISCO ALTO — IRM Elevado',`IRM em ${S.irm}/100. Condições favoráveis ao Anopheles.`,'danger','alert');
+    if(S.risk==='medium') pushAlert('Atenção — IRM Médio',`IRM em ${S.irm}/100. Monitoramento intensificado.`,'warn','warning');
+  }
+  /* Normal readings */
+  if(S.tx1.on) addEvt('TX1','Leitura periódica',`${S.tx1.t}°C / ${S.tx1.h}%`,'info');
+  if(S.tx2.on) addEvt('TX2','Leitura periódica',`${S.tx2.t}°C / ${S.tx2.h}%`,'info');
+  addHistLog();
+}
+
+function addEvt(dev,evt,val,st){
+  S.events.unshift({time:now(),dev,evt,val,st});
+  if(S.events.length>CFG.evtMax) S.events.pop();
+  renderEvents();
+}
+
+function pushAlert(title,msg,sev,icon){
+  S.alerts.unshift({title,msg,sev,icon,time:now()});
+  updateBadge();
+  renderAlertLog();
+  showToast(title,msg,sev,icon);
+}
+
+function addHistLog(){
+  histLog.unshift({
+    time:now(),
+    t1t:S.tx1.on?`${S.tx1.t}°C`:'--', t1h:S.tx1.on?`${S.tx1.h}%`:'--', t1w:S.tx1.on?(S.tx1.w?'Sim':'Não'):'--',
+    t2t:S.tx2.on?`${S.tx2.t}°C`:'--', t2h:S.tx2.on?`${S.tx2.h}%`:'--', t2w:S.tx2.on?(S.tx2.w?'Sim':'Não'):'--',
+    irm:S.irm, risk:riskPT(S.risk)
+  });
+  if(histLog.length>100) histLog.pop();
+  renderHistLog();
+}
+
+/* ══════════════════════════════════════════════════
+   RENDER
+══════════════════════════════════════════════════ */
+function renderAll(){
+  renderKPIs();
+  renderTX('tx1'); renderTX('tx2');
+  renderRX();
+  renderIRM();
+  drawHistChart();
+  drawSpk('spk1',spk1H);
+  drawSpk('spk2',spk2H);
+  renderSensorDetail();
+}
+
+/* ── KPIs ── */
+function renderKPIs(){
+  const avgT = S.tx1.on&&S.tx2.on ? ((S.tx1.t+S.tx2.t)/2).toFixed(1) : S.tx1.on?S.tx1.t:S.tx2.on?S.tx2.t:'--';
+  const avgH = S.tx1.on&&S.tx2.on ? ((S.tx1.h+S.tx2.h)/2).toFixed(1) : S.tx1.on?S.tx1.h:S.tx2.on?S.tx2.h:'--';
+  set('kpi-temp', avgT!=='--'?`${avgT}°C`:'--');
+  set('kpi-hum',  avgH!=='--'?`${avgH}%` :'--');
+  const wc=(S.tx1.w?1:0)+(S.tx2.on&&S.tx2.w?1:0);
+  const we=document.getElementById('kpi-water');
+  if(we){ we.textContent=wc?`${wc} sensor(es)`:'Não detectada'; we.style.color=wc?'var(--danger)':'var(--accent2)'; }
+  set('kpi-water-h', wc?'Criadouro potencial':'Ambiente seco');
+  set('kpi-irm', `${S.irm}/100`);
+  const pill=document.getElementById('kpi-risk-pill');
+  if(pill){ pill.textContent=riskPT(S.risk); pill.className=`risk-pill ${S.risk}`; }
+}
+
+/* ── TX CARD ── */
+function renderTX(id){
+  const tx=S[id];
+  /* status */
+  const sEl=document.getElementById(`${id}-status`);
+  if(sEl){ sEl.className=`tx-status ${tx.on?'online':'offline'}`; sEl.innerHTML=`<span class="st-dot"></span>${tx.on?'ONLINE':'OFFLINE'}`; }
+  /* lora anim */
+  const la=document.getElementById(`${id}-lora`);
+  if(la) la.className=`lora-bars${tx.on?'':' off'}`;
+  /* metrics */
+  set(`${id}-temp`,  tx.on?`${tx.t}°C`:'--');
+  set(`${id}-hum`,   tx.on?`${tx.h}%` :'--');
+  set(`${id}-rssi`,  tx.on?`${tx.rssi} dBm`:'--');
+  const wEl=document.getElementById(`${id}-water`);
+  if(wEl){
+    if(!tx.on){ wEl.textContent='--'; wEl.className='txm-val water-val'; }
+    else if(tx.w){ wEl.textContent='DETECTADA'; wEl.className='txm-val water-val detected'; }
+    else{ wEl.textContent='AUSENTE'; wEl.className='txm-val water-val undetected'; }
+  }
+  /* signal bars */
+  const pct=clamp((tx.rssi+102)/50,0,1);
+  const lit=Math.round(pct*5);
+  document.querySelectorAll(`#${id}-sig span`).forEach((b,i)=>b.classList.toggle('lit',tx.on&&i<lit));
+}
+
+/* ── RX CARD ── */
+function renderRX(){
+  set('rx-pkts', S.rx.pkts);
+  set('rx-sync', S.rx.sync);
+  const wEl=document.getElementById('rx-wifi');
+  if(wEl){ wEl.textContent=S.rx.wifi?'LIGADO':'DESLIGADO'; wEl.className=`rxs-val ${S.rx.wifi?'online':'offline'}`; }
+  const lEl=document.getElementById('rx-lora');
+  if(lEl){ lEl.textContent=S.rx.lora?'ACTIVO':'SEM SINAL'; lEl.className=`rxs-val ${S.rx.lora?'online':'offline'}`; }
+  /* Navbar pill */
+  const led=document.getElementById('rx-led'), st=document.getElementById('rx-st');
+  if(led) led.className=`rx-led${S.rx.lora?'':' off'}`;
+  if(st){ st.textContent=S.rx.lora?'ONLINE':'OFFLINE'; st.className=`rx-st${S.rx.lora?'':' off'}`; }
+}
+
+/* ── IRM ── */
+function renderIRM(){
+  set('irm-score', S.irm);
+  const card=document.getElementById('irm-card');
+  if(card) card.className=`irm-card risk-${S.risk}`;
+  const badge=document.getElementById('irm-badge');
+  if(badge) badge.className=`irm-risk-badge ${S.risk}`;
+  set('irm-badge-txt', `RISCO ${riskPT(S.risk)}`);
+  const scoreEl=document.getElementById('irm-score');
+  const scoreColors={low:'var(--accent2)',medium:'var(--warn)',high:'var(--danger)'};
+  if(scoreEl) scoreEl.style.color=scoreColors[S.risk];
+  /* factor bars */
+  const avgT=(S.tx1.t+S.tx2.t)/2, avgH=(S.tx1.h+S.tx2.h)/2;
+  const water=(S.tx1.w?1:0)+(S.tx2.w?1:0);
+  fillBar('if-temp',  clamp((avgT-18)/22*100,0,100));
+  fillBar('if-hum',   clamp((avgH-28)/70*100,0,100));
+  fillBar('if-water', water*50);
+  drawGauge(S.irm,S.risk);
+}
+
+function fillBar(id,pct){
+  const el=document.getElementById(id); if(!el) return;
+  el.style.width=`${pct}%`;
+  el.style.background=pct>65?'var(--danger)':pct>35?'var(--warn)':'var(--accent)';
+}
+
+/* ── SENSOR DETAIL ── */
+function renderSensorDetail(){
+  set('sc-t1-temp', S.tx1.on?`${S.tx1.t}°C`:'--');
+  set('sc-t1-hum',  S.tx1.on?`${S.tx1.h}%` :'--');
+  set('sc-t1-rssi', S.tx1.on?`${S.tx1.rssi} dBm`:'--');
+  const s1=document.getElementById('sc-t1-state'); if(s1){ s1.textContent=S.tx1.on?'Online':'Offline'; s1.className=S.tx1.on?'online':'offline'; }
+  set('sc-t2-temp', S.tx2.on?`${S.tx2.t}°C`:'--');
+  set('sc-t2-hum',  S.tx2.on?`${S.tx2.h}%` :'--');
+  set('sc-t2-rssi', S.tx2.on?`${S.tx2.rssi} dBm`:'--');
+  const s2=document.getElementById('sc-t2-state'); if(s2){ s2.textContent=S.tx2.on?'Online':'Offline'; s2.className=S.tx2.on?'online':'offline'; }
+  set('sc-rx-pkts', S.rx.pkts);
+  set('sc-rx-err',  S.crcErr);
+  set('sc-rx-up',   `${Math.floor(S.uptime*CFG.interval/60000)} min`);
+  set('cfg-pkts',   S.rx.pkts);
+}
+
+function renderEvents(){
+  const tb=document.getElementById('evt-tbody'); if(!tb) return;
+  if(!S.events.length){ tb.innerHTML='<tr><td colspan="5" class="tbl-empty">Sem eventos.</td></tr>'; return; }
+  tb.innerHTML=S.events.slice(0,20).map(e=>`
+    <tr>
+      <td style="font-family:var(--font-mono);font-size:.72rem;color:var(--text3)">${e.time}</td>
+      <td style="color:var(--accent);font-weight:600">${e.dev}</td>
+      <td style="color:var(--text)">${e.evt}</td>
+      <td style="font-family:var(--font-mono)">${e.val}</td>
+      <td><span class="tag ${e.st}">${e.st.toUpperCase()}</span></td>
+    </tr>`).join('');
+}
+
+window.clearEvents=()=>{ S.events=[]; renderEvents(); };
+
+function renderHistLog(){
+  const tb=document.getElementById('log-tbody'); if(!tb) return;
+  tb.innerHTML=histLog.slice(0,50).map(r=>`
+    <tr>
+      <td style="font-family:var(--font-mono);font-size:.72rem;color:var(--text3)">${r.time}</td>
+      <td style="font-family:var(--font-mono)">${r.t1t}</td><td>${r.t1h}</td><td>${r.t1w}</td>
+      <td style="font-family:var(--font-mono)">${r.t2t}</td><td>${r.t2h}</td><td>${r.t2w}</td>
+      <td style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${r.irm}</td>
+      <td><span class="tag ${r.risk==='ALTO'?'danger':r.risk==='MÉDIO'?'warn':'ok'}">${r.risk}</span></td>
+    </tr>`).join('');
+}
+
+function renderAlertLog(){
+  const el=document.getElementById('alert-log'); if(!el) return;
+  if(!S.alerts.length){ el.innerHTML='<p class="tbl-empty" style="padding:3rem;text-align:center">Nenhum alerta registado.</p>'; return; }
+  el.innerHTML=S.alerts.map(a=>`
+    <div class="al-entry ${a.sev}">
+      <span class="al-icon">${getIconSVG(a.icon)}</span>
+      <div><div class="al-title">${a.title}</div><div class="al-msg">${a.msg}</div><div class="al-time">${a.time}</div></div>
+    </div>`).join('');
+}
+
+window.clearAlerts=()=>{ S.alerts=[]; updateBadge(); renderAlertLog(); };
+
+function updateBadge(){
+  const el=document.getElementById('sb-badge'); if(!el) return;
+  el.textContent=S.alerts.length;
+  el.style.display=S.alerts.length?'flex':'none';
+}
+
+/* ══════════════════════════════════════════════════
+   TOAST NOTIFICATIONS
+══════════════════════════════════════════════════ */
+const toastQ=[]; let toastBusy=false;
+function showToast(title,msg,sev,icon){
+  toastQ.push({title,msg,sev,icon});
+  if(!toastBusy) drainToast();
+}
+const iconMap={
+  'signal':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 17h20v4H2z"/><path d="M2 10h4v4H2z" opacity=".3"/><path d="M10 10h4v4h-4z" opacity=".6"/><path d="M18 10h4v4h-4z"/></svg>',
+  'check':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>',
+  'alert':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 20h20L12 2z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+  'warning':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 20h20L12 2z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+  'settings':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6M4.22 4.22l4.24 4.24m5.08 5.08l4.24 4.24M1 12h6m6 0h6M4.22 19.78l4.24-4.24m5.08-5.08l4.24-4.24"/></svg>',
+  'water':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>'
+};
+function getIconSVG(key){
+  if(!key||!key.includes('<')) return iconMap[key]||'';
+  return key;
+}
+function drainToast(){
+  if(!toastQ.length){ toastBusy=false; return; }
+  toastBusy=true;
+  const n=toastQ.shift();
+  const wrap=document.getElementById('toast-wrap');
+  const el=document.createElement('div');
+  el.className=`toast ${n.sev}`;
+  el.innerHTML=`<span class="toast-icon">${getIconSVG(n.icon)}</span><div><div class="toast-title">${n.title}</div><div class="toast-msg">${n.msg}</div></div>`;
+  wrap.appendChild(el);
+  el.addEventListener('click',()=>dismiss(el));
+  setTimeout(()=>el.classList.add('show'),20);
+  setTimeout(()=>{ dismiss(el); setTimeout(drainToast,300); },5000);
+}
+function dismiss(el){ el.classList.remove('show'); setTimeout(()=>el.remove(),350); }
+
+/* ══════════════════════════════════════════════════
+   CANVAS DRAWING
+══════════════════════════════════════════════════ */
+
+/* IRM Semi-circle gauge */
+function drawGauge(val,risk){
+  const c=document.getElementById('irm-gauge'); if(!c) return;
+  const ctx=c.getContext('2d');
+  const W=c.width,H=c.height,cx=W/2,cy=H-8;
+  const r=Math.min(W,H*2)/2-16;
+  ctx.clearRect(0,0,W,H);
+  /* track */
+  ctx.beginPath(); ctx.arc(cx,cy,r,Math.PI,2*Math.PI);
+  ctx.strokeStyle='#dce8f5'; ctx.lineWidth=14; ctx.lineCap='round'; ctx.stroke();
+  /* fill */
+  const colorMap={low:'#059669',medium:'#b45309',high:'#dc2626'};
+  const fillEnd=Math.PI+(val/100)*Math.PI;
+  ctx.beginPath(); ctx.arc(cx,cy,r,Math.PI,fillEnd);
+  ctx.strokeStyle=colorMap[risk]; ctx.lineWidth=14; ctx.lineCap='round';
+  ctx.shadowColor=colorMap[risk]; ctx.shadowBlur=10;
+  ctx.stroke(); ctx.shadowBlur=0;
+  /* ticks */
+  for(let i=0;i<=10;i++){
+    const a=Math.PI+(i/10)*Math.PI;
+    ctx.beginPath();
+    ctx.moveTo(cx+(r-20)*Math.cos(a),cy+(r-20)*Math.sin(a));
+    ctx.lineTo(cx+(r-26)*Math.cos(a),cy+(r-26)*Math.sin(a));
+    ctx.strokeStyle='rgba(0,30,80,.15)'; ctx.lineWidth=i%5===0?2:1;
+    ctx.lineCap='square'; ctx.shadowBlur=0; ctx.stroke();
+  }
+  /* labels */
+  ctx.font='10px "Outfit"'; ctx.fillStyle='rgba(0,30,80,.35)'; ctx.textAlign='center';
+  ctx.fillText('0',cx-r+8,cy+4); ctx.fillText('50',cx,cy-r+14); ctx.fillText('100',cx+r-8,cy+4);
+}
+
+/* TX Sparklines */
+function drawSpk(id,data){
+  const c=document.getElementById(id); if(!c||data.length<2) return;
+  c.width=c.offsetWidth||200;
+  const ctx=c.getContext('2d'), W=c.width, H=c.height;
+  ctx.clearRect(0,0,W,H);
+  const mn=Math.min(...data)-1, mx=Math.max(...data)+1;
+  const toX=i=>(i/(data.length-1))*W;
+  const toY=v=>H-((v-mn)/(mx-mn))*(H-6)-3;
+  /* grid */
+  ctx.strokeStyle='rgba(0,30,80,.06)'; ctx.lineWidth=1;
+  [.33,.67].forEach(f=>{ ctx.beginPath(); ctx.moveTo(0,H*f); ctx.lineTo(W,H*f); ctx.stroke(); });
+  /* area */
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'rgba(0,119,204,.15)'); g.addColorStop(1,'rgba(0,119,204,0)');
+  ctx.beginPath(); ctx.moveTo(toX(0),H);
+  data.forEach((v,i)=>ctx.lineTo(toX(i),toY(v)));
+  ctx.lineTo(toX(data.length-1),H); ctx.closePath(); ctx.fillStyle=g; ctx.fill();
+  /* line */
+  ctx.beginPath();
+  data.forEach((v,i)=>i===0?ctx.moveTo(toX(i),toY(v)):ctx.lineTo(toX(i),toY(v)));
+  ctx.strokeStyle='var(--accent)'; ctx.lineWidth=2; ctx.lineJoin='round';
+  ctx.shadowColor='rgba(0,119,204,.4)'; ctx.shadowBlur=5;
+  ctx.stroke(); ctx.shadowBlur=0;
+  /* dot */
+  const lx=toX(data.length-1),ly=toY(data[data.length-1]);
+  ctx.beginPath(); ctx.arc(lx,ly,3.5,0,Math.PI*2);
+  ctx.fillStyle='var(--accent)'; ctx.shadowColor='rgba(0,119,204,.5)'; ctx.shadowBlur=8;
+  ctx.fill(); ctx.shadowBlur=0;
+}
+
+/* History multi-line chart */
+function drawHistChart(){
+  const c=document.getElementById('hist-chart'); if(!c) return;
+  c.width=c.offsetWidth||500; c.height=180;
+  const ctx=c.getContext('2d'), W=c.width, H=c.height;
+  const {lbl,t1,t2,hum}=S.hist;
+  if(lbl.length<2) return;
+  ctx.clearRect(0,0,W,H);
+  const all=[...t1,...t2,...hum].filter(x=>x!==null);
+  if(!all.length) return;
+  const mn=Math.min(...all)-2, mx=Math.max(...all)+2;
+  const n=lbl.length;
+  const toX=i=>(i/(n-1))*(W-30)+15;
+  const toY=v=>H-((v-mn)/(mx-mn))*(H-24)-12;
+  /* grid */
+  ctx.strokeStyle='rgba(0,30,80,.06)'; ctx.lineWidth=1;
+  for(let i=0;i<=4;i++){
+    const y=H-(i/4)*(H-24)-12;
+    ctx.beginPath(); ctx.moveTo(15,y); ctx.lineTo(W-15,y); ctx.stroke();
+    ctx.fillStyle='rgba(0,30,80,.25)'; ctx.font='10px Outfit';
+    ctx.textAlign='right'; ctx.fillText(Math.round(mn+(i/4)*(mx-mn)),12,y+4);
+  }
+  /* x labels */
+  ctx.fillStyle='rgba(0,30,80,.25)'; ctx.font='9px Outfit'; ctx.textAlign='center';
+  [0,Math.floor(n/2),n-1].forEach(i=>{ if(lbl[i]) ctx.fillText(lbl[i],toX(i),H); });
+  /* draw line helper */
+  const line=(data,color,dash=false)=>{
+    ctx.beginPath(); let mv=false;
+    data.forEach((v,i)=>{ if(v===null){mv=false;return;} if(!mv){ctx.moveTo(toX(i),toY(v));mv=true;}else ctx.lineTo(toX(i),toY(v)); });
+    ctx.strokeStyle=color; ctx.lineWidth=2; ctx.lineJoin='round';
+    if(dash) ctx.setLineDash([4,3]); else ctx.setLineDash([]);
+    ctx.shadowColor=color; ctx.shadowBlur=5; ctx.stroke(); ctx.shadowBlur=0; ctx.setLineDash([]);
+  };
+  line(hum,'rgba(96,165,250,.55)',true);
+  line(t2,'#059669');
+  line(t1,'#0077cc');
+}
+
+/* IRM history chart (Histórico section) */
+function drawIrmHistChart(){
+  const c=document.getElementById('irm-hist-chart'); if(!c) return;
+  c.width=c.offsetWidth||600;
+  const ctx=c.getContext('2d'), W=c.width, H=c.height||180;
+  c.height=H;
+  const {lbl,irm}=S.hist;
+  if(lbl.length<2) return;
+  ctx.clearRect(0,0,W,H);
+  const n=lbl.length;
+  const toX=i=>(i/(n-1))*(W-30)+15;
+  const toY=v=>H-((v/100))*(H-24)-12;
+  const med=parseInt(document.getElementById('cfg-med')?.value||CFG.irmMed);
+  const high=parseInt(document.getElementById('cfg-high')?.value||CFG.irmHigh);
+  /* risk zones */
+  ctx.fillStyle='rgba(220,38,38,.06)';  ctx.fillRect(15,toY(100),W-30,toY(high)-toY(100));
+  ctx.fillStyle='rgba(180,83,9,.06)';   ctx.fillRect(15,toY(high),W-30,toY(med)-toY(high));
+  ctx.fillStyle='rgba(5,150,105,.04)';  ctx.fillRect(15,toY(med),W-30,toY(0)-toY(med));
+  /* grid */
+  ctx.strokeStyle='rgba(0,30,80,.06)'; ctx.lineWidth=1;
+  [0,25,50,75,100].forEach(v=>{
+    ctx.beginPath(); ctx.moveTo(15,toY(v)); ctx.lineTo(W-15,toY(v)); ctx.stroke();
+    ctx.fillStyle='rgba(0,30,80,.25)'; ctx.font='10px Outfit'; ctx.textAlign='right'; ctx.fillText(v,12,toY(v)+4);
+  });
+  /* area */
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'rgba(220,38,38,.18)'); g.addColorStop(.5,'rgba(180,83,9,.1)'); g.addColorStop(1,'rgba(5,150,105,.05)');
+  ctx.beginPath(); ctx.moveTo(toX(0),H);
+  irm.forEach((v,i)=>ctx.lineTo(toX(i),toY(v)));
+  ctx.lineTo(toX(n-1),H); ctx.closePath(); ctx.fillStyle=g; ctx.fill();
+  /* line */
+  ctx.beginPath(); irm.forEach((v,i)=>i===0?ctx.moveTo(toX(i),toY(v)):ctx.lineTo(toX(i),toY(v)));
+  ctx.strokeStyle='#dc2626'; ctx.lineWidth=2.5; ctx.lineJoin='round';
+  ctx.shadowColor='rgba(220,38,38,.3)'; ctx.shadowBlur=8; ctx.stroke(); ctx.shadowBlur=0;
+  /* dots on data points */
+  irm.forEach((v,i)=>{
+    const c2=v>=high?'#dc2626':v>=med?'#b45309':'#059669';
+    ctx.beginPath(); ctx.arc(toX(i),toY(v),3,0,Math.PI*2);
+    ctx.fillStyle=c2; ctx.fill();
+  });
+}
+
+/* ══════════════════════════════════════════════════
+   MALARIA RISK WARNINGS BY DISTRICT
+══════════════════════════════════════════════════ */
+const DISTRICTS_WARNINGS = [
+  { 
+    name: 'Zona de Monitoramento TX1', 
+    risk: 'low', temp: 0, hum: 0, water: false, irm: 0, 
+    cases: '--', coords: 'Localização Alpha-1', lat: -1.23, lng: 13.45,
+    lastUpdate: '--'
+  },
+  { 
+    name: 'Zona de Monitoramento TX2', 
+    risk: 'low', temp: 0, hum: 0, water: false, irm: 0, 
+    cases: '--', coords: 'Localização Alpha-2', lat: -1.24, lng: 13.46,
+    lastUpdate: '--'
+  }
+];
+
+let currentFilterMalaria = 'all';
+
+function renderMalariaWarnings() {
+  const container = document.getElementById('malaria-warnings-grid');
+  if (!container) return;
+  
+  const filtered = currentFilterMalaria === 'all' 
+    ? DISTRICTS_WARNINGS 
+    : DISTRICTS_WARNINGS.filter(d => d.risk === currentFilterMalaria);
+  
+  if (!filtered.length) {
+    container.innerHTML = '<div class="loading-state"><p>Nenhum aviso encontrado para o filtro selecionado.</p></div>';
+    return;
+  }
+  
+  container.innerHTML = filtered.map(district => {
+    const mapsUrl = `https://www.google.com/maps/@${district.lat},${district.lng},10z`;
+    const riskLabel = {low: 'BAIXO', medium: 'MÉDIO', high: 'ALTO'}[district.risk];
+    
+    return `
+    <div class="malaria-card risk-${district.risk}">
+      <div class="mc-header">
+        <h3>${district.name}</h3>
+        <span class="mc-risk-badge ${district.risk}">
+          <span class="mc-risk-dot"></span>${riskLabel}
+        </span>
+      </div>
+      
+      <div class="mc-content">
+        <div class="mc-row">
+          <div class="mc-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 13.6V3a2 2 0 00-4 0v10.6A4 4 0 1013 13.6z"/></svg></div>
+          <div class="mc-row-text">
+            <div class="mc-row-label">Temperatura</div>
+            <div class="mc-row-value">${district.temp}°C</div>
+          </div>
+        </div>
+        
+        <div class="mc-row">
+          <div class="mc-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 2l5 9.5A6 6 0 1 1 6 11.5L11 2z"/></svg></div>
+          <div class="mc-row-text">
+            <div class="mc-row-label">Humidade</div>
+            <div class="mc-row-value">${district.hum}%</div>
+          </div>
+        </div>
+        
+        <div class="mc-row">
+          <div class="mc-row-icon">${district.water ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 2C8 7 4 11 4 14a7 7 0 0014 0C18 11 14 7 11 2z"/></svg>' : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>'}</div>
+          <div class="mc-row-text">
+            <div class="mc-row-label">Água Presente</div>
+            <div class="mc-row-value">${district.water ? 'Detectada' : 'Não detectada'}</div>
+          </div>
+        </div>
+        
+        <div class="mc-row">
+          <div class="mc-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="2" x2="12" y2="22"/><polyline points="19 5 9 12 19 19"/></svg></div>
+          <div class="mc-row-text">
+            <div class="mc-row-label">IRM (Índice de Risco)</div>
+            <div class="mc-row-value">${district.irm}/100</div>
+          </div>
+        </div>
+        
+        <div class="mc-row">
+          <div class="mc-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+          <div class="mc-row-text">
+            <div class="mc-row-label">Casos Confirmados</div>
+            <div class="mc-row-value">${district.cases}</div>
+          </div>
+        </div>
+        
+        <div class="mc-coords"><svg class="inline-icon" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="white"/></svg> ${district.coords}</div>
+        
+        <div class="mc-actions">
+          <a href="${mapsUrl}" target="_blank" class="mc-btn mc-btn-primary">
+            <svg class="inline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> Google Maps
+          </a>
+          <button class="mc-btn mc-btn-secondary" onclick="viewDistrictDetails('${district.name}')">
+            <svg class="inline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg> Detalhes
+          </button>
+        </div>
+      </div>
+    </div>
+    `;
+  }).join('');
+}
+
+window.filterMalariaWarnings = function(value) {
+  currentFilterMalaria = value;
+  renderMalariaWarnings();
+};
+
+window.refreshMalariaWarnings = async function() {
+  if (CFG.useRealData) {
+    try {
+      // Example: fetch('https://api.malariawatch.org/v1/districts')
+      // For now, we simulate the update
+      simulateDistrictUpdate();
+    } catch (error) {
+      console.error('District data refresh failed:', error);
+    }
+  } else {
+    simulateDistrictUpdate();
+  }
+  
+  renderMalariaWarnings();
+  showToast('Avisos Actualizados', 'Dados de risco malária recarregados.', 'info', 'refresh');
+};
+
+/**
+ * Logic for simulating changes in district risk data.
+ */
+function simulateDistrictUpdate() {
+  DISTRICTS_WARNINGS.forEach(d => {
+    d.irm = Math.max(10, Math.min(100, d.irm + randI(-5, 5)));
+    d.temp = +(d.temp + (Math.random() - 0.5) * 2).toFixed(1);
+    d.hum = Math.max(30, Math.min(95, d.hum + randI(-3, 3)));
+    d.lastUpdate = now();
+    // Update risk level based on new IRM
+    d.risk = d.irm >= 70 ? 'high' : d.irm >= 45 ? 'medium' : 'low';
+  });
+}
+
+window.viewDistrictDetails = function(districtName) {
+  const district = DISTRICTS_WARNINGS.find(d => d.name === districtName);
+  if (!district) return;
+  
+  const message = `
+    Distrito: ${district.name}
+    IRM: ${district.irm}/100 (${district.risk.toUpperCase()})
+    Temperatura: ${district.temp}°C
+    Humidade: ${district.hum}%
+    Última actualização: ${district.lastUpdate}
+  `;
+  
+  showToast(`Detalhes — ${districtName}`, message, 'info', 'info');
+};
+
+/* ══════════════════════════════════════════════════
+   CONTROLS
+══════════════════════════════════════════════════ */
+window.forceRefresh=()=>{ simulate(); renderAll(); };
+
+window.exportCSV=()=>{
+  const rows=[['Hora','TX1 Temp','TX1 Hum','TX1 Água','TX2 Temp','TX2 Hum','TX2 Água','IRM','Risco']];
+  histLog.forEach(r=>rows.push([r.time,r.t1t,r.t1h,r.t1w,r.t2t,r.t2h,r.t2w,r.irm,r.risk]));
+  const csv=rows.map(r=>r.join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=`malariawatch-${Date.now()}.csv`; a.click();
+  URL.revokeObjectURL(url);
+};
+
+window.setInterval2=v=>{
+  CFG.interval=v*1000;
+  set('cfg-int-val',`${v}s`);
+  clearInterval(timer);
+  timer=setInterval(tick,CFG.interval);
+};
+
+window.setSimMode=v=>{
+  simMode=v;
+  showToast('Modo de Simulação',`Alterado para: ${v}`,'info','settings');
+};
+
+function set(id,val){ const e=document.getElementById(id); if(e) e.textContent=val; }
+
+/* ══════════════════════════════════════════════════
+   MAIN LOOP
+══════════════════════════════════════════════════ */
+async function tick(){ 
+  await simulate(); 
+  renderAll(); 
+}
+
+window.addEventListener('resize',()=>{
+  drawHistChart(); drawSpk('spk1',spk1H); drawSpk('spk2',spk2H);
+  drawGauge(S.irm,S.risk);
+});
+
+async function boot(){
+  startClock();
+  initNav();
+  
+  if (CFG.useRealData) {
+    initFirebase();
+  } else {
+    /* System starts empty, waiting for first real data update */
+    renderAll();
+    renderMalariaWarnings();
+    // Set the recurring timer for simulation if enabled
+    timer = setInterval(tick, CFG.interval);
+  }
+  
+  setTimeout(() => showToast('VigiMat Online', 'Sistema sincronizado com Firebase.', 'info', 'satellite'), 600);
+}
+
+window.addEventListener('DOMContentLoaded', startPreloader);

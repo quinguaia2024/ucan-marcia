@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VigiAmb — Vigilância Ambiental Comunitária</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════
+     PRELOADER
+════════════════════════════════════════════ -->
+<div id="preloader">
+  <div class="pl-inner">
+    <div class="pl-logo">
+      <div class="pl-ring pl-ring-1"></div>
+      <div class="pl-ring pl-ring-2"></div>
+      <div class="pl-ring pl-ring-3"></div>
+      <div class="pl-core">
+        <svg viewBox="0 0 40 40" fill="none">
+          <path d="M20 4C11.2 4 4 11.2 4 20C4 28.8 11.2 36 20 36" stroke="#00e8c6" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M20 4C28.8 4 36 11.2 36 20C36 28.8 28.8 36 20 36" stroke="#00e8c6" stroke-width="1.5" stroke-linecap="round" opacity=".4"/>
+          <circle cx="20" cy="20" r="5" fill="#00e8c6"/>
+        </svg>
+      </div>
+    </div>
+    <div class="pl-brand">VigiAmb</div>
+    <p class="pl-status" id="pl-status">Inicializando sensores...</p>
+    <div class="pl-bar"><div class="pl-fill"></div></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     AMBIENT BACKGROUND
+════════════════════════════════════════════ -->
+<div class="ambient-bg" aria-hidden="true">
+  <div class="amb-orb amb-1"></div>
+  <div class="amb-orb amb-2"></div>
+  <div class="amb-orb amb-3"></div>
+  <div class="grid-overlay"></div>
+</div>
+<canvas id="particles" aria-hidden="true"></canvas>
+
+<!-- ═══════════════════════════════════════════
+     NAVBAR
+════════════════════════════════════════════ -->
+<nav id="navbar" role="navigation" aria-label="Navegação principal">
+  <div class="nav-inner">
+    <a class="nav-logo" href="#hero" aria-label="VigiAmb início">
+      <div class="logo-mark">
+        <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <circle cx="16" cy="16" r="13" stroke="#00e8c6" stroke-width="1.5"/>
+          <circle cx="16" cy="16" r="8"  stroke="#00e8c6" stroke-width="1" opacity=".5"/>
+          <path d="M16 10 C11 10 8 13 8 16 C8 19 11 22 16 22 C21 22 24 19 24 16 C24 13 21 10 16 10Z" fill="#00e8c6" opacity=".2"/>
+          <circle cx="16" cy="16" r="3.5" fill="#00e8c6"/>
+        </svg>
+      </div>
+      <div>
+        <span class="logo-name">VigiAmb</span>
+        <span class="logo-tagline">Vigilância Comunitária</span>
+      </div>
+    </a>
+
+    <div class="nav-clock-wrap">
+      <span class="nav-clock" id="nav-clock">00:00:00</span>
+      <span class="nav-date" id="nav-date">---</span>
+    </div>
+
+    <div class="nav-actions">
+      <div class="conn-badge" id="conn-badge">
+        <span class="conn-dot" id="conn-dot"></span>
+        <span id="conn-text">Ligando...</span>
+      </div>
+      <button class="notif-btn" id="notif-btn" aria-label="Ver alertas">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 01-3.46 0"/>
+        </svg>
+        <span class="notif-dot" id="notif-dot" style="display:none"></span>
+      </button>
+      <button class="menu-toggle" id="menu-toggle" aria-label="Abrir menu" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </div>
+</nav>
+
+<!-- MOBILE DRAWER -->
+<div class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="Menu de navegação">
+  <div class="drawer-inner">
+    <div class="drawer-head">
+      <span class="drawer-brand">VigiAmb</span>
+      <button class="drawer-close" id="drawer-close" aria-label="Fechar menu">✕</button>
+    </div>
+    <nav class="drawer-nav">
+      <a href="#hero"            class="drawer-link" onclick="closeDrawer()"><svg class="drawer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> Início</a>
+      <a href="#dashboard"       class="drawer-link" onclick="closeDrawer()"><svg class="drawer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg> Painel</a>
+      <a href="#zones"           class="drawer-link" onclick="closeDrawer()"><svg class="drawer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 12L2 12"/><path d="M12 12l9 9"/><path d="M12 12l-9-9"/></svg> Zonas de Sensor</a>
+      <a href="#receiver"        class="drawer-link" onclick="closeDrawer()"><svg class="drawer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36M20.49 15a9 9 0 0 1-14.85 3.36"/></svg> Receptor Central</a>
+      <a href="#alerts"          class="drawer-link" onclick="closeDrawer()"><svg class="drawer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg> Alertas</a>
+      <a href="#recommendations" class="drawer-link" onclick="closeDrawer()"><svg class="drawer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7z"/></svg> Recomendações</a>
+      <a href="#history"         class="drawer-link" onclick="closeDrawer()"><svg class="drawer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Histórico</a>
+    </nav>
+    <div class="drawer-footer">
+      <span class="conn-dot" style="margin-right:.5rem"></span>
+      Sistema em funcionamento
+    </div>
+  </div>
+</div>
+<div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
+
+<!-- ═══════════════════════════════════════════
+     MAIN
+════════════════════════════════════════════ -->
+<main id="main">
+
+  <!-- ── HERO ───────────────────────────── -->
+  <section id="hero" aria-label="Estado de risco principal">
+    <div class="hero-inner">
+
+      <!-- LEFT: copy + summary -->
+      <div class="hero-left">
+        <div class="hero-badges">
+          <span class="live-badge">
+            <span class="live-dot"></span>Ao Vivo
+          </span>
+          <span class="hero-date-badge" id="hero-date">---</span>
+        </div>
+
+        <h1 class="hero-title">
+          Protege a tua<br>
+          <span class="hero-accent">comunidade</span><br>
+          da malária
+        </h1>
+
+        <p class="hero-desc" id="hero-desc">
+          Sensores ambientais inteligentes monitoram a tua zona 24h por dia, detectando condições que favorecem o mosquito da malária.
+        </p>
+
+        <div class="hero-env-row">
+          <div class="env-chip">
+            <span class="env-icon"><svg class="chip-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg></span>
+            <div class="env-info">
+              <span class="env-lbl">Temperatura</span>
+              <span class="env-val" id="hero-temp">--°C</span>
+            </div>
+          </div>
+          <div class="env-chip">
+            <span class="env-icon"><svg class="chip-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg></span>
+            <div class="env-info">
+              <span class="env-lbl">Humidade</span>
+              <span class="env-val" id="hero-hum">--%</span>
+            </div>
+          </div>
+          <div class="env-chip">
+            <span class="env-icon"><svg class="chip-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 17.58A5 5 0 0 0 18 8h-1.26A8 8 0 1 0 4 16.25"/><path d="M8 16v6"/><path d="M12 16v6"/><path d="M16 16v6"/></svg></span>
+            <div class="env-info">
+              <span class="env-lbl">Chuva</span>
+              <span class="env-val" id="hero-rain">--</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="hero-ctas">
+          <a href="#alerts"          class="cta-primary">Ver Alertas</a>
+          <a href="#recommendations" class="cta-ghost">Recomendações</a>
+        </div>
+      </div>
+
+      <!-- RIGHT: animated risk orb -->
+      <div class="hero-right">
+        <div class="risk-wrap">
+          <!-- outer pulsing rings -->
+          <div class="ring-set" id="ring-set">
+            <div class="orb-ring r1"></div>
+            <div class="orb-ring r2"></div>
+            <div class="orb-ring r3"></div>
+          </div>
+
+          <!-- SVG gauge -->
+          <div class="risk-orb" id="risk-orb" aria-live="polite" aria-label="Nível de risco de malária">
+            <svg class="risk-svg" viewBox="0 0 240 240" role="img" aria-hidden="true">
+              <!-- defs: gradient -->
+              <defs>
+                <linearGradient id="riskGrad" x1="0" y1="0" x2="1" y2="1">
+                  <stop id="grad-stop1" offset="0%"   stop-color="#00d68f"/>
+                  <stop id="grad-stop2" offset="100%" stop-color="#00e8c6"/>
+                </linearGradient>
+              </defs>
+              <!-- track -->
+              <circle class="gauge-track" cx="120" cy="120" r="100"
+                      fill="none" stroke-width="12"
+                      stroke-dasharray="628.3" stroke-dashoffset="0"
+                      transform="rotate(-90 120 120)"/>
+              <!-- fill -->
+              <circle class="gauge-fill" id="gauge-fill" cx="120" cy="120" r="100"
+                      fill="none" stroke="url(#riskGrad)" stroke-width="12" stroke-linecap="round"
+                      stroke-dasharray="628.3" stroke-dashoffset="628.3"
+                      transform="rotate(-90 120 120)"/>
+            </svg>
+
+            <div class="orb-inner">
+              <div class="orb-emoji" id="orb-emoji"><svg class="orb-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+              <div class="orb-pct"  id="orb-pct">--</div>
+              <div class="orb-lvl"  id="orb-lvl">CALCULANDO</div>
+              <div class="orb-tag"  id="orb-tag">Aguardando dados...</div>
+            </div>
+          </div>
+
+          <div class="risk-caption" id="risk-caption">
+            A monitorar condições ambientais em tempo real...
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section><!-- /hero -->
+
+  <!-- ── DASHBOARD CARDS ────────────────── -->
+  <section id="dashboard" aria-label="Painel de dados ambientais">
+    <div class="sec-inner">
+      <header class="sec-hd">
+        <h2 class="sec-title">Painel Ambiental</h2>
+        <p class="sec-sub">Dados actualizados dos sensores comunitários</p>
+      </header>
+
+      <div class="dash-grid">
+
+        <!-- Temperature -->
+        <article class="stat-card" id="sc-temp">
+          <div class="sc-top">
+            <span class="sc-icon" aria-hidden="true"><svg class="stat-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg></span>
+            <span class="sc-trend" id="tr-temp">—</span>
+          </div>
+          <div class="sc-value" id="sv-temp">--°C</div>
+          <div class="sc-label">Temperatura Média</div>
+          <div class="sc-bar-track"><div class="sc-bar-fill" id="bf-temp" style="width:0%"></div></div>
+          <canvas class="mini-chart" id="mc-temp" height="36" aria-hidden="true"></canvas>
+        </article>
+
+        <!-- Humidity -->
+        <article class="stat-card" id="sc-hum">
+          <div class="sc-top">
+            <span class="sc-icon" aria-hidden="true"><svg class="stat-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg></span>
+            <span class="sc-trend" id="tr-hum">—</span>
+          </div>
+          <div class="sc-value" id="sv-hum">--%</div>
+          <div class="sc-label">Humidade Relativa</div>
+          <div class="sc-bar-track"><div class="sc-bar-fill" id="bf-hum" style="width:0%"></div></div>
+          <canvas class="mini-chart" id="mc-hum" height="36" aria-hidden="true"></canvas>
+        </article>
+
+        <!-- Rain -->
+        <article class="stat-card" id="sc-rain">
+          <div class="sc-top">
+            <span class="sc-icon" aria-hidden="true"><svg class="stat-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 17.58A5 5 0 0 0 18 8h-1.26A8 8 0 1 0 4 16.25"/><path d="M8 16v6"/><path d="M12 16v6"/><path d="M16 16v6"/></svg></span>
+            <span class="sc-trend" id="tr-rain">—</span>
+          </div>
+          <div class="sc-value" id="sv-rain">--</div>
+          <div class="sc-label">Detecção de Chuva</div>
+          <div class="rain-zones-row">
+            <div class="rz-pill" id="rz1"><span class="rz-dot" id="rz-dot1"></span>Zona 1</div>
+            <div class="rz-pill" id="rz2"><span class="rz-dot" id="rz-dot2"></span>Zona 2</div>
+          </div>
+          <canvas class="mini-chart" id="mc-rain" height="36" aria-hidden="true"></canvas>
+        </article>
+
+        <!-- Environment -->
+        <article class="stat-card" id="sc-env">
+          <div class="sc-top">
+            <span class="sc-icon" id="env-icon" aria-hidden="true"><svg class="stat-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 3.5 1.85 9a7 7 0 0 1-9.85 9z"/><path d="M11 20v-8g"/></svg></span>
+            <span class="sc-trend" id="tr-env">—</span>
+          </div>
+          <div class="sc-value" id="sv-env">Bom</div>
+          <div class="sc-label">Condição Ambiental</div>
+          <div class="cond-meter">
+            <div class="cond-seg seg-low"  id="seg-low"></div>
+            <div class="cond-seg seg-med"  id="seg-med"></div>
+            <div class="cond-seg seg-high" id="seg-high"></div>
+          </div>
+          <div class="cond-labels">
+            <span>Favorável</span><span>Atenção</span><span>Risco</span>
+          </div>
+        </article>
+
+        <!-- Alerts count -->
+        <article class="stat-card" id="sc-alts">
+          <div class="sc-top">
+            <span class="sc-icon" aria-hidden="true"><svg class="stat-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></span>
+            <span class="sc-trend" id="tr-alts">—</span>
+          </div>
+          <div class="sc-value" id="sv-alts">0</div>
+          <div class="sc-label">Alertas Activos</div>
+          <div class="mini-alerts-list" id="mini-alerts-list" aria-live="polite"></div>
+        </article>
+
+        <!-- Zones -->
+        <article class="stat-card" id="sc-zones">
+          <div class="sc-top">
+            <span class="sc-icon" aria-hidden="true"><svg class="stat-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"/></svg></span>
+            <span class="sc-trend" id="tr-zones">—</span>
+          </div>
+          <div class="sc-value" id="sv-zones">2 / 2</div>
+          <div class="sc-label">Zonas Activas</div>
+          <div class="zones-pills-row">
+            <div class="zone-pll" id="zp1"><span class="zp-dot active" id="zpd1"></span>Zona Norte</div>
+            <div class="zone-pll" id="zp2"><span class="zp-dot active" id="zpd2"></span>Zona Sul</div>
+          </div>
+          <p class="zones-caption" id="zones-caption">2 zonas a transmitir</p>
+        </article>
+
+      </div><!-- /dash-grid -->
+    </div>
+  </section><!-- /dashboard -->
+
+  <!-- ── SENSOR ZONES ───────────────────── -->
+  <section id="zones" aria-label="Estado dos sensores por zona">
+    <div class="sec-inner">
+      <header class="sec-hd">
+        <h2 class="sec-title">Zonas de Monitoramento</h2>
+        <p class="sec-sub">Sensores IoT instalados na tua comunidade</p>
+      </header>
+
+      <div class="zones-grid">
+
+        <!-- TX1 -->
+        <article class="zone-card" id="zone-card-1">
+          <div class="zc-head">
+            <div class="zc-id">
+              <span class="zc-badge">TX1</span>
+              <span class="zc-name">Zona Norte</span>
+            </div>
+            <div class="zc-status online" id="zc-status-1">
+              <span class="zs-dot"></span>Online
+            </div>
+          </div>
+
+          <div class="signal-row">
+            <div class="signal-bars" id="sig-bars-1" aria-label="Força do sinal">
+              <span></span><span></span><span></span><span></span><span></span>
+            </div>
+            <span class="signal-txt" id="sig-txt-1">Excelente</span>
+          </div>
+
+          <div class="zc-metrics">
+            <div class="zm"><span class="zm-l">Temperatura</span><span class="zm-v" id="z1-temp">--°C</span></div>
+            <div class="zm"><span class="zm-l">Humidade</span>   <span class="zm-v" id="z1-hum">--%</span></div>
+            <div class="zm"><span class="zm-l">Chuva</span>      <span class="zm-v" id="z1-rain">--</span></div>
+            <div class="zm"><span class="zm-l">RSSI</span>       <span class="zm-v mono" id="z1-rssi">-- dBm</span></div>
+          </div>
+
+          <div class="zc-foot">
+            <span class="zc-upd" id="z1-upd">--</span>
+            <div class="lora-pill" id="lora-1">
+              <span class="lora-dot"></span>LoRa
+            </div>
+          </div>
+        </article>
+
+        <!-- TX2 -->
+        <article class="zone-card" id="zone-card-2">
+          <div class="zc-head">
+            <div class="zc-id">
+              <span class="zc-badge">TX2</span>
+              <span class="zc-name">Zona Sul</span>
+            </div>
+            <div class="zc-status online" id="zc-status-2">
+              <span class="zs-dot"></span>Online
+            </div>
+          </div>
+
+          <div class="signal-row">
+            <div class="signal-bars" id="sig-bars-2" aria-label="Força do sinal">
+              <span></span><span></span><span></span><span></span><span></span>
+            </div>
+            <span class="signal-txt" id="sig-txt-2">Excelente</span>
+          </div>
+
+          <div class="zc-metrics">
+            <div class="zm"><span class="zm-l">Temperatura</span><span class="zm-v" id="z2-temp">--°C</span></div>
+            <div class="zm"><span class="zm-l">Humidade</span>   <span class="zm-v" id="z2-hum">--%</span></div>
+            <div class="zm"><span class="zm-l">Chuva</span>      <span class="zm-v" id="z2-rain">--</span></div>
+            <div class="zm"><span class="zm-l">RSSI</span>       <span class="zm-v mono" id="z2-rssi">-- dBm</span></div>
+          </div>
+
+          <div class="zc-foot">
+            <span class="zc-upd" id="z2-upd">--</span>
+            <div class="lora-pill" id="lora-2">
+              <span class="lora-dot"></span>LoRa
+            </div>
+          </div>
+        </article>
+
+      </div>
+    </div>
+  </section><!-- /zones -->
+
+  <!-- ── RECEIVER ───────────────────────── -->
+  <section id="receiver" aria-label="Receptor central">
+    <div class="sec-inner">
+      <header class="sec-hd">
+        <h2 class="sec-title">Receptor Central</h2>
+        <p class="sec-sub">Estação principal de recolha e transmissão de dados</p>
+      </header>
+
+      <div class="rx-card">
+        <div class="rx-visual">
+          <div class="rx-orb-wrap">
+            <div class="rx-ring rx-r1"></div>
+            <div class="rx-ring rx-r2"></div>
+            <div class="rx-ring rx-r3"></div>
+            <div class="rx-core">
+              <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+                <path d="M24 6C14 6 6 14 6 24C6 34 14 42 24 42" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M24 6C34 6 42 14 42 24C42 34 34 42 24 42" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".4"/>
+                <path d="M24 14C18 14 14 18 14 24C14 30 18 34 24 34" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M24 14C30 14 34 18 34 24C34 30 30 34 24 34" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".4"/>
+                <circle cx="24" cy="24" r="5" fill="currentColor"/>
+              </svg>
+            </div>
+          </div>
+          <p class="rx-name">RX — Receptor</p>
+          <p class="rx-state" id="rx-state">Operacional</p>
+        </div>
+
+        <div class="rx-stats">
+          <div class="rx-st">
+            <div class="rxst-icon"><svg class="rx-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"/></svg></div>
+            <div class="rxst-body">
+              <span class="rxst-label">Comunicação LoRa</span>
+              <span class="rxst-val online" id="rx-lora">Activa</span>
+            </div>
+          </div>
+          <div class="rx-st">
+            <div class="rxst-icon"><svg class="rx-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div>
+            <div class="rxst-body">
+              <span class="rxst-label">Pacotes Recebidos</span>
+              <span class="rxst-val mono" id="rx-pkts">0</span>
+            </div>
+          </div>
+          <div class="rx-st">
+            <div class="rxst-icon"><svg class="rx-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+            <div class="rxst-body">
+              <span class="rxst-label">Wi-Fi</span>
+              <span class="rxst-val online" id="rx-wifi">Conectado</span>
+            </div>
+          </div>
+          <div class="rx-st">
+            <div class="rxst-icon"><svg class="rx-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36M20.49 15a9 9 0 0 1-14.85 3.36"/></svg></div>
+            <div class="rxst-body">
+              <span class="rxst-label">Último Sincronismo</span>
+              <span class="rxst-val mono" id="rx-sync">--:--:--</span>
+            </div>
+          </div>
+          <div class="rx-st">
+            <div class="rxst-icon"><svg class="rx-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="16" height="10" rx="2" ry="2"/><line x1="22" y1="11" x2="22" y2="13"/></svg></div>
+            <div class="rxst-body">
+              <span class="rxst-label">Sistema</span>
+              <span class="rxst-val online" id="rx-sys">Operacional</span>
+            </div>
+          </div>
+          <div class="rx-st">
+            <div class="rxst-icon"><svg class="rx-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 20h.01"/><path d="M7 20v-4"/><path d="M12 20v-8"/><path d="M17 20V8"/><path d="M22 20V4"/></svg></div>
+            <div class="rxst-body">
+              <span class="rxst-label">Qualidade do Sinal</span>
+              <span class="rxst-val" id="rx-qual">--</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section><!-- /receiver -->
+
+  <!-- ── ALERTS ─────────────────────────── -->
+  <section id="alerts" aria-label="Alertas comunitários" aria-live="polite">
+    <div class="sec-inner">
+      <header class="sec-hd">
+        <div>
+          <h2 class="sec-title">Alertas da Comunidade</h2>
+          <p class="sec-sub">Notificações automáticas sobre riscos ambientais</p>
+        </div>
+        <button class="clear-btn" id="clear-btn" onclick="clearAllAlerts()">Limpar todos</button>
+      </header>
+
+      <div class="alerts-list" id="alerts-list">
+        <div class="alerts-empty" id="alerts-empty">
+          <span class="ae-icon"><svg class="empty-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
+          <p class="ae-title">Nenhum alerta activo</p>
+          <p class="ae-sub">A tua comunidade está a ser monitorada. Sem riscos detectados de momento.</p>
+        </div>
+      </div>
+    </div>
+  </section><!-- /alerts -->
+
+  <!-- ── RECOMMENDATIONS ───────────────── -->
+  <section id="recommendations" aria-label="Recomendações de prevenção">
+    <div class="sec-inner">
+      <header class="sec-hd">
+        <h2 class="sec-title">Recomendações de Prevenção</h2>
+        <p class="sec-sub">Acções que podes tomar agora para proteger a tua família</p>
+      </header>
+      <div class="rec-grid" id="rec-grid" aria-live="polite">
+        <!-- Generated by JS -->
+      </div>
+    </div>
+  </section><!-- /recommendations -->
+
+  <!-- ── HISTORY CHARTS ────────────────── -->
+  <section id="history" aria-label="Histórico ambiental">
+    <div class="sec-inner">
+      <header class="sec-hd">
+        <h2 class="sec-title">Histórico Ambiental</h2>
+        <p class="sec-sub">Evolução das condições nas últimas leituras</p>
+      </header>
+
+      <div class="charts-grid">
+
+        <div class="chart-card">
+          <div class="ch-head">
+            <span class="ch-title"><svg class="inline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg> Temperatura</span>
+            <span class="ch-cur" id="ch-cur-temp">--°C</span>
+          </div>
+          <div class="ch-body">
+            <canvas id="ch-temp" height="130" aria-label="Gráfico de temperatura" role="img"></canvas>
+          </div>
+          <div class="ch-foot">
+            <span id="ch-min-temp">Mín: --</span>
+            <span id="ch-max-temp">Máx: --</span>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="ch-head">
+            <span class="ch-title"><svg class="inline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg> Humidade</span>
+            <span class="ch-cur" id="ch-cur-hum">--%</span>
+          </div>
+          <div class="ch-body">
+            <canvas id="ch-hum" height="130" aria-label="Gráfico de humidade" role="img"></canvas>
+          </div>
+          <div class="ch-foot">
+            <span id="ch-min-hum">Mín: --</span>
+            <span id="ch-max-hum">Máx: --</span>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="ch-head">
+            <span class="ch-title"><svg class="inline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Risco de Malária</span>
+            <span class="ch-cur" id="ch-cur-risk">--</span>
+          </div>
+          <div class="ch-body">
+            <canvas id="ch-risk" height="130" aria-label="Gráfico de risco de malária" role="img"></canvas>
+          </div>
+          <div class="ch-foot">
+            <span id="ch-min-risk">Mín: --</span>
+            <span id="ch-max-risk">Máx: --</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section><!-- /history -->
+
+</main><!-- /main -->
+
+<!-- ═══════════════════════════════════════════
+     FOOTER
+════════════════════════════════════════════ -->
+<footer id="footer">
+  <div class="foot-inner">
+    <div class="foot-brand">
+      <span class="foot-logo">VigiAmb</span>
+      <p>Sistema de Vigilância Ambiental Comunitária</p>
+      <p class="foot-note">Dados actualizados a cada 5 segundos</p>
+    </div>
+    <div class="foot-links">
+      <a href="#hero">Início</a>
+      <a href="#dashboard">Painel</a>
+      <a href="#zones">Sensores</a>
+      <a href="#alerts">Alertas</a>
+    </div>
+    <div class="foot-status">
+      <span class="conn-dot" style="margin-right:.5rem"></span>
+      <span>Sistema Operacional</span>
+    </div>
+  </div>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>

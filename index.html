@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MalariaWatch — Monitoramento Ambiental IoT</title>
+  <link rel="stylesheet" href="style.css"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+</head>
+<body>
+
+<!-- ═══════════════════ PRELOADER ═══════════════════ -->
+<div id="preloader">
+  <div class="pl-inner">
+    <div class="pl-ring-wrap">
+      <div class="pl-ring pl-r1"></div>
+      <div class="pl-ring pl-r2"></div>
+      <div class="pl-ring pl-r3"></div>
+      <div class="pl-core">
+        <svg viewBox="0 0 44 44" fill="none">
+          <path d="M22 4C12.1 4 4 12.1 4 22S12.1 40 22 40" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"/>
+          <path d="M22 4C31.9 4 40 12.1 40 22S31.9 40 22 40" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" opacity=".3"/>
+          <circle cx="22" cy="22" r="5" fill="var(--accent)"/>
+        </svg>
+      </div>
+    </div>
+    <p class="pl-title">MalariaWatch</p>
+    <div class="pl-bar"><div class="pl-fill"></div></div>
+    <p class="pl-msg" id="pl-msg">Inicializando módulos...</p>
+  </div>
+</div>
+
+<!-- ═══════════════════ TOAST CONTAINER ═══════════════════ -->
+<div id="toast-wrap" aria-live="polite"></div>
+
+<!-- ═══════════════════ SIDEBAR OVERLAY ═══════════════════ -->
+<div id="overlay" onclick="closeSidebar()"></div>
+
+<!-- ═══════════════════ SIDEBAR ═══════════════════ -->
+<aside id="sidebar">
+  <div class="sb-brand">
+    <div class="sb-logo">
+      <svg viewBox="0 0 32 32" fill="none">
+        <circle cx="16" cy="16" r="14" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="4 3"/>
+        <circle cx="16" cy="16" r="9"  stroke="var(--accent)" stroke-width="1" opacity=".5"/>
+        <path d="M10 16C10 11 22 11 22 16C22 21 10 21 10 16Z" fill="var(--accent)" opacity=".2"/>
+        <circle cx="16" cy="16" r="3.5" fill="var(--accent)"/>
+      </svg>
+    </div>
+    <div>
+      <p class="sb-name">MalariaWatch</p>
+      <p class="sb-ver">v2.4.1</p>
+    </div>
+  </div>
+
+  <nav class="sb-nav">
+    <span class="sb-group-label">PRINCIPAL</span>
+    <a class="sb-item active" data-sec="dashboard" href="#">
+      <svg class="sb-icon" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="2" width="8" height="8" rx="1.5"/><rect x="12" y="2" width="8" height="8" rx="1.5"/><rect x="2" y="12" width="8" height="8" rx="1.5"/><rect x="12" y="12" width="8" height="8" rx="1.5"/></svg>
+      <span>Dashboard</span>
+      <span class="sb-live">LIVE</span>
+    </a>
+    <a class="sb-item" data-sec="sensores" href="#">
+      <svg class="sb-icon" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 2l5 9H6l5-9z"/><circle cx="11" cy="17" r="3"/></svg>
+      <span>Sensores</span>
+    </a>
+    <a class="sb-item" data-sec="historico" href="#">
+      <svg class="sb-icon" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="2 11 6 11 9 19 13 3 16 11 20 11"/></svg>
+      <span>Histórico</span>
+    </a>
+    <span class="sb-group-label" style="margin-top:.5rem">SISTEMA</span>
+    <a class="sb-item" data-sec="alertas" href="#" id="nav-alertas">
+      <svg class="sb-icon" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 7A6 6 0 005 7c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M12.7 19a2 2 0 01-3.4 0"/></svg>
+      <span>Alertas</span>
+      <span class="sb-badge" id="sb-badge" style="display:none">0</span>
+    </a>
+    <a class="sb-item" data-sec="avisos-malaria" href="#">
+      <svg class="sb-icon" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 1L1 20h20L11 1z"/><line x1="11" y1="8" x2="11" y2="13"/><circle cx="11" cy="16" r="0.5" fill="currentColor"/></svg>
+      <span>Avisos de Risco</span>
+    </a>
+    <a class="sb-item" data-sec="configuracoes" href="#">
+      <svg class="sb-icon" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="2.5"/><path d="M11 1v4M11 17v4M4.2 4.2l2.8 2.8M14.9 14.9l2.9 2.9M1 11h4M17 11h4M4.2 17.8l2.8-2.8M14.9 7.1l2.9-2.9"/></svg>
+      <span>Configurações</span>
+    </a>
+  </nav>
+
+  <div class="sb-foot">
+    <div class="sb-status">
+      <span class="status-led"></span>
+      <span>Sistema Operacional</span>
+    </div>
+  </div>
+</aside>
+
+<!-- ═══════════════════ MAIN WRAPPER ═══════════════════ -->
+<div id="app">
+
+  <!-- ─── NAVBAR ─── -->
+  <header id="navbar">
+    <div class="nb-left">
+      <button class="burger" onclick="toggleSidebar()" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
+      <div class="nb-title">
+        <span class="nb-name">MalariaWatch</span>
+        <span class="nb-sub">Monitoramento Ambiental IoT</span>
+      </div>
+    </div>
+    <div class="nb-right">
+      <div class="rx-pill" id="rx-pill">
+        <span class="rx-led" id="rx-led"></span>
+        <span class="rx-lbl">RX Central</span>
+        <span class="rx-st" id="rx-st">ONLINE</span>
+      </div>
+      <div class="nb-clock">
+        <span class="clock" id="clock">00:00:00</span>
+        <span class="cdate" id="cdate">---</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ─── CONTENT ─── -->
+  <main id="main">
+
+    <!-- ════ DASHBOARD ════ -->
+    <section class="sec active" id="sec-dashboard">
+      <div class="pg-head">
+        <div>
+          <h1 class="pg-title">Dashboard <span class="live-dot"></span></h1>
+          <p class="pg-sub">Região de Monitoramento Alpha — Actualizando em tempo real</p>
+        </div>
+        <div class="pg-actions">
+          <button class="icon-btn" onclick="forceRefresh()" title="Forçar actualização">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 4 20 10 14 10"/><path d="M17 10a9 9 0 11-2-7.9"/></svg>
+          </button>
+          <button class="outline-btn" onclick="exportCSV()">
+            <svg class="inline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Exportar CSV
+          </button>
+        </div>
+      </div>
+
+      <!-- KPI ROW -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-icon kpi-temp">
+            <svg viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 13.6V3a2 2 0 00-4 0v10.6A4 4 0 1013 13.6z"/></svg>
+          </div>
+          <div>
+            <p class="kpi-label">Temperatura Média</p>
+            <p class="kpi-val" id="kpi-temp">--°C</p>
+            <p class="kpi-hint" id="kpi-temp-h">calculando...</p>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon kpi-hum">
+            <svg viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 2l5 9.5A6 6 0 1 1 6 11.5L11 2z"/></svg>
+          </div>
+          <div>
+            <p class="kpi-label">Humidade Média</p>
+            <p class="kpi-val" id="kpi-hum">--%</p>
+            <p class="kpi-hint" id="kpi-hum-h">calculando...</p>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon kpi-water">
+            <svg viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 2 C8 7 4 11 4 14a7 7 0 0014 0C18 11 14 7 11 2z"/></svg>
+          </div>
+          <div>
+            <p class="kpi-label">Presença de Água</p>
+            <p class="kpi-val" id="kpi-water">--</p>
+            <p class="kpi-hint" id="kpi-water-h">--</p>
+          </div>
+        </div>
+        <div class="kpi-card kpi-risk-card">
+          <div class="kpi-icon kpi-risk">
+            <svg viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9.5 3.6L1.8 17a2 2 0 001.7 3h15a2 2 0 001.7-3L12.5 3.6a2 2 0 00-3 0z"/><line x1="11" y1="8.5" x2="11" y2="12"/><line x1="11" y1="15.5" x2="11.01" y2="15.5"/></svg>
+          </div>
+          <div>
+            <p class="kpi-label">IRM Global</p>
+            <p class="kpi-val" id="kpi-irm">--/100</p>
+            <p class="kpi-hint"><span class="risk-pill" id="kpi-risk-pill">--</span></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- DEVICES ROW -->
+      <div class="dev-grid">
+        <!-- TX1 -->
+        <div class="tx-card" id="tx1-card">
+          <div class="txc-head">
+            <div class="txc-id">
+              <span class="tx-badge">TX1</span>
+              <span class="tx-name">Emissor 1</span>
+              <div class="lora-bars" id="tx1-lora">
+                <span></span><span></span><span></span>
+              </div>
+            </div>
+            <div class="tx-status online" id="tx1-status">
+              <span class="st-dot"></span>ONLINE
+            </div>
+          </div>
+          <div class="tx-metrics">
+            <div class="txm">
+              <span class="txm-lbl">Temperatura</span>
+              <span class="txm-val" id="tx1-temp">--°C</span>
+            </div>
+            <div class="txm">
+              <span class="txm-lbl">Humidade</span>
+              <span class="txm-val" id="tx1-hum">--%</span>
+            </div>
+            <div class="txm">
+              <span class="txm-lbl">Água</span>
+              <span class="txm-val water-val" id="tx1-water">--</span>
+            </div>
+            <div class="txm">
+              <span class="txm-lbl">RSSI LoRa</span>
+              <span class="txm-val" id="tx1-rssi">-- dBm</span>
+            </div>
+          </div>
+          <div class="sig-row">
+            <span class="sig-lbl">Sinal</span>
+            <div class="sig-bars" id="tx1-sig">
+              <span></span><span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+          <div class="spark-wrap"><canvas id="spk1" height="60"></canvas></div>
+        </div>
+
+        <!-- RX CENTRAL -->
+        <div class="rx-center-card" id="rx-card">
+          <div class="rxc-orb" id="rxc-orb">
+            <div class="rxc-ring rxc-r1"></div>
+            <div class="rxc-ring rxc-r2"></div>
+            <div class="rxc-ring rxc-r3"></div>
+            <div class="rxc-core">
+              <svg viewBox="0 0 40 40" fill="none">
+                <path d="M20 5C11.2 5 4 12.2 4 21C4 29.8 11.2 37 20 37" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"/>
+                <path d="M20 5C28.8 5 36 12.2 36 21C36 29.8 28.8 37 20 37" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" opacity=".35"/>
+                <circle cx="20" cy="21" r="5" fill="var(--accent)"/>
+              </svg>
+            </div>
+          </div>
+          <p class="rxc-name">Receptor Central</p>
+          <p class="rxc-id">RX — Módulo Principal</p>
+          <div class="rxc-stats">
+            <div class="rxs">
+              <span class="rxs-lbl">Pacotes RX</span>
+              <span class="rxs-val" id="rx-pkts">0</span>
+            </div>
+            <div class="rxs">
+              <span class="rxs-lbl">Último Sync</span>
+              <span class="rxs-val mono" id="rx-sync">--:--:--</span>
+            </div>
+            <div class="rxs">
+              <span class="rxs-lbl">Wi-Fi</span>
+              <span class="rxs-val online" id="rx-wifi">LIGADO</span>
+            </div>
+            <div class="rxs">
+              <span class="rxs-lbl">LoRa RX</span>
+              <span class="rxs-val online" id="rx-lora">ACTIVO</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- TX2 -->
+        <div class="tx-card" id="tx2-card">
+          <div class="txc-head">
+            <div class="txc-id">
+              <span class="tx-badge">TX2</span>
+              <span class="tx-name">Emissor 2</span>
+              <div class="lora-bars" id="tx2-lora">
+                <span></span><span></span><span></span>
+              </div>
+            </div>
+            <div class="tx-status online" id="tx2-status">
+              <span class="st-dot"></span>ONLINE
+            </div>
+          </div>
+          <div class="tx-metrics">
+            <div class="txm">
+              <span class="txm-lbl">Temperatura</span>
+              <span class="txm-val" id="tx2-temp">--°C</span>
+            </div>
+            <div class="txm">
+              <span class="txm-lbl">Humidade</span>
+              <span class="txm-val" id="tx2-hum">--%</span>
+            </div>
+            <div class="txm">
+              <span class="txm-lbl">Água</span>
+              <span class="txm-val water-val" id="tx2-water">--</span>
+            </div>
+            <div class="txm">
+              <span class="txm-lbl">RSSI LoRa</span>
+              <span class="txm-val" id="tx2-rssi">-- dBm</span>
+            </div>
+          </div>
+          <div class="sig-row">
+            <span class="sig-lbl">Sinal</span>
+            <div class="sig-bars" id="tx2-sig">
+              <span></span><span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+          <div class="spark-wrap"><canvas id="spk2" height="60"></canvas></div>
+        </div>
+      </div>
+
+      <!-- ANALYSIS ROW -->
+      <div class="analysis-grid">
+        <!-- IRM BIG CARD -->
+        <div class="irm-card" id="irm-card">
+          <div class="irm-toprow">
+            <p class="irm-title">Índice de Risco de Malária</p>
+            <span class="irm-zone">Região Alpha</span>
+          </div>
+          <div class="irm-gauge-wrap">
+            <canvas id="irm-gauge" width="220" height="130"></canvas>
+            <div class="irm-center">
+              <span class="irm-score" id="irm-score">0</span>
+              <span class="irm-denom">/100</span>
+            </div>
+          </div>
+          <div class="irm-badge-row">
+            <div class="irm-risk-badge low" id="irm-badge">
+              <svg class="irm-dot-svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="currentColor"/></svg>
+              <span id="irm-badge-txt">CALCULANDO</span>
+            </div>
+          </div>
+          <div class="irm-factors">
+            <p class="if-title">Factores de Contribuição</p>
+            <div class="if-row"><span>Temperatura</span><div class="if-bar"><div id="if-temp" class="if-fill"></div></div></div>
+            <div class="if-row"><span>Humidade</span><div class="if-bar"><div id="if-hum"  class="if-fill"></div></div></div>
+            <div class="if-row"><span>Água presente</span><div class="if-bar"><div id="if-water" class="if-fill"></div></div></div>
+          </div>
+        </div>
+
+        <!-- HISTORY CHART -->
+        <div class="chart-card">
+          <div class="chart-hd">
+            <p class="chart-title">Temperatura &amp; Humidade — Histórico</p>
+            <div class="chart-legend">
+              <span class="leg-dot" style="background:var(--accent)"></span>TX1 Temp
+              <span class="leg-dot" style="background:var(--accent2)"></span>TX2 Temp
+              <span class="leg-dot" style="background:#60a5fa88"></span>Humidade
+            </div>
+          </div>
+          <canvas id="hist-chart" height="180"></canvas>
+        </div>
+      </div>
+
+      <!-- EVENTS TABLE -->
+      <div class="tbl-card">
+        <div class="tbl-head">
+          <p class="tbl-title">Eventos Recentes</p>
+          <button class="ghost-btn" onclick="clearEvents()">Limpar</button>
+        </div>
+        <div class="tbl-scroll">
+          <table class="evt-table">
+            <thead><tr>
+              <th>Hora</th><th>Dispositivo</th><th>Evento</th><th>Valor</th><th>Estado</th>
+            </tr></thead>
+            <tbody id="evt-tbody"><tr><td colspan="5" class="tbl-empty">A carregar...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════ SENSORES ════ -->
+    <section class="sec" id="sec-sensores">
+      <div class="pg-head">
+        <div><h1 class="pg-title">Sensores</h1><p class="pg-sub">Especificações e estado dos módulos</p></div>
+      </div>
+      <div class="sensor-grid">
+        <div class="sensor-card">
+          <div class="sc-head"><span class="tx-badge">TX1</span><h3>Emissor 1 — Detalhe</h3></div>
+          <dl class="spec-dl">
+            <dt>Protocolo</dt><dd>LoRa 915 MHz</dd>
+            <dt>Sensor Temp.</dt><dd>DHT22</dd>
+            <dt>Sensor Água</dt><dd>FC-28 / Resistivo</dd>
+            <dt>Spread Factor</dt><dd>SF7 – SF12</dd>
+            <dt>Intervalo TX</dt><dd>30 s</dd>
+            <dt>Temperatura</dt><dd id="sc-t1-temp">--</dd>
+            <dt>Humidade</dt><dd id="sc-t1-hum">--</dd>
+            <dt>RSSI</dt><dd id="sc-t1-rssi">--</dd>
+            <dt>Estado</dt><dd id="sc-t1-state" class="online">Online</dd>
+          </dl>
+        </div>
+        <div class="sensor-card">
+          <div class="sc-head"><span class="tx-badge">TX2</span><h3>Emissor 2 — Detalhe</h3></div>
+          <dl class="spec-dl">
+            <dt>Protocolo</dt><dd>LoRa 915 MHz</dd>
+            <dt>Sensor Temp.</dt><dd>DHT22</dd>
+            <dt>Sensor Água</dt><dd>FC-28 / Resistivo</dd>
+            <dt>Spread Factor</dt><dd>SF7 – SF12</dd>
+            <dt>Intervalo TX</dt><dd>30 s</dd>
+            <dt>Temperatura</dt><dd id="sc-t2-temp">--</dd>
+            <dt>Humidade</dt><dd id="sc-t2-hum">--</dd>
+            <dt>RSSI</dt><dd id="sc-t2-rssi">--</dd>
+            <dt>Estado</dt><dd id="sc-t2-state" class="online">Online</dd>
+          </dl>
+        </div>
+        <div class="sensor-card">
+          <div class="sc-head"><span class="rx-badge">RX</span><h3>Receptor Central — Detalhe</h3></div>
+          <dl class="spec-dl">
+            <dt>Protocolo LoRa</dt><dd>RX Contínuo</dd>
+            <dt>Conectividade</dt><dd>Wi-Fi 802.11b/g/n</dd>
+            <dt>Processador</dt><dd>ESP32-S3</dd>
+            <dt>Frequência</dt><dd>915 MHz</dd>
+            <dt>Pacotes RX</dt><dd id="sc-rx-pkts">--</dd>
+            <dt>Erros CRC</dt><dd id="sc-rx-err">0</dd>
+            <dt>Uptime</dt><dd id="sc-rx-up">--</dd>
+            <dt>Estado</dt><dd class="online">Online</dd>
+          </dl>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════ HISTÓRICO ════ -->
+    <section class="sec" id="sec-historico">
+      <div class="pg-head">
+        <div><h1 class="pg-title">Histórico</h1><p class="pg-sub">Registo completo de leituras</p></div>
+      </div>
+      <div class="chart-card" style="margin-bottom:1.5rem">
+        <div class="chart-hd">
+          <p class="chart-title">IRM — Evolução Temporal</p>
+          <div class="chart-legend">
+            <span class="leg-dot" style="background:var(--danger)"></span>IRM
+          </div>
+        </div>
+        <canvas id="irm-hist-chart" height="180"></canvas>
+      </div>
+      <div class="tbl-card">
+        <div class="tbl-head"><p class="tbl-title">Log Completo de Leituras</p></div>
+        <div class="tbl-scroll">
+          <table class="evt-table">
+            <thead><tr>
+              <th>Hora</th><th>TX1 Temp</th><th>TX1 Hum</th><th>TX1 Água</th>
+              <th>TX2 Temp</th><th>TX2 Hum</th><th>TX2 Água</th><th>IRM</th><th>Risco</th>
+            </tr></thead>
+            <tbody id="log-tbody"><tr><td colspan="9" class="tbl-empty">Sem dados ainda.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════ ALERTAS ════ -->
+    <section class="sec" id="sec-alertas">
+      <div class="pg-head">
+        <div><h1 class="pg-title">Alertas</h1><p class="pg-sub">Central de notificações e eventos críticos</p></div>
+        <button class="outline-btn danger-btn" onclick="clearAlerts()">Limpar Alertas</button>
+      </div>
+      <div class="alert-log" id="alert-log">
+        <p class="tbl-empty" style="padding:3rem;text-align:center">Nenhum alerta registado.</p>
+      </div>
+    </section>
+
+    <!-- ════ AVISOS DE RISCO DE MALÁRIA ════ -->
+    <section class="sec" id="sec-avisos-malaria">
+      <div class="pg-head">
+        <div>
+          <h1 class="pg-title">Avisos de Risco de Malária</h1>
+          <p class="pg-sub">Zonas de monitoramento activo por distrito</p>
+        </div>
+        <button class="outline-btn" onclick="refreshMalariaWarnings()"><svg class="inline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36M20.49 15a9 9 0 0 1-14.85 3.36"/></svg> Actualizar</button>
+      </div>
+
+      <div class="filter-row">
+        <div class="filter-group">
+          <label for="filter-risk">Filtrar por nível de risco:</label>
+          <select id="filter-risk" onchange="filterMalariaWarnings(this.value)">
+            <option value="all">Todos</option>
+            <option value="low">Baixo</option>
+            <option value="medium">Médio</option>
+            <option value="high">Alto</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="malaria-warnings-grid" id="malaria-warnings-grid">
+        <div class="loading-state">
+          <p>A carregar avisos de risco...</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════ CONFIGURAÇÕES ════ -->
+    <section class="sec" id="sec-configuracoes">
+      <div class="pg-head">
+        <div><h1 class="pg-title">Configurações</h1><p class="pg-sub">Parâmetros e modo de simulação</p></div>
+      </div>
+      <div class="cfg-grid">
+        <div class="cfg-card">
+          <h3>Intervalo de Actualização</h3>
+          <label class="cfg-lbl">Frequência (segundos): <strong id="cfg-int-val">5s</strong></label>
+          <input type="range" min="3" max="30" value="5" id="cfg-int" oninput="setInterval2(this.value)">
+        </div>
+        <div class="cfg-card">
+          <h3>Limiares de Risco</h3>
+          <label class="cfg-lbl">IRM Médio ≥</label>
+          <input type="number" id="cfg-med" value="35" min="10" max="60">
+          <label class="cfg-lbl" style="margin-top:.85rem">IRM Alto ≥</label>
+          <input type="number" id="cfg-high" value="65" min="40" max="95">
+        </div>
+        <div class="cfg-card">
+          <h3>Modo de Simulação</h3>
+          <label class="cfg-lbl">Cenário activo</label>
+          <select id="cfg-sim" onchange="setSimMode(this.value)">
+            <option value="normal">Normal</option>
+            <option value="stress">Alto Risco (stress)</option>
+            <option value="safe">Cenário Seguro</option>
+            <option value="tx2off">TX2 Offline</option>
+          </select>
+        </div>
+        <div class="cfg-card">
+          <h3>Informações do Sistema</h3>
+          <dl class="spec-dl">
+            <dt>Versão</dt><dd>2.4.1</dd>
+            <dt>Região</dt><dd>Alpha — Zona Norte</dd>
+            <dt>Protocolo</dt><dd>LoRa 915 MHz + Wi-Fi</dd>
+            <dt>Build</dt><dd>2025-06-01</dd>
+            <dt>Pacotes RX</dt><dd id="cfg-pkts">--</dd>
+          </dl>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- Firebase SDK (Compatibility version for easier integration) -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+<!-- VigiMat Core Logic -->
+<script src="vigimat-core.js"></script>
+
+<!-- Main App Logic -->
+<script src="app.js"></script>
+</body>
+</html>
