@@ -75,6 +75,10 @@
       <span>Alertas</span>
       <span class="sb-badge" id="sb-badge" style="display:none">0</span>
     </a>
+    <a class="sb-item" data-sec="testes" href="#">
+      <svg class="sb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+      <span>Testes Académicos</span>
+    </a>
     <a class="sb-item" data-sec="avisos-malaria" href="#">
       <svg class="sb-icon" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 1L1 20h20L11 1z"/><line x1="11" y1="8" x2="11" y2="13"/><circle cx="11" cy="16" r="0.5" fill="currentColor"/></svg>
       <span>Avisos de Risco</span>
@@ -451,6 +455,38 @@
       </div>
       <div class="alert-log" id="alert-log">
         <p class="tbl-empty" style="padding:3rem;text-align:center">Nenhum alerta registado.</p>
+      </div>
+    </section>
+
+    <!-- ════ TESTES ACADÉMICOS ════ -->
+    <section class="sec" id="sec-testes">
+      <div class="pg-head">
+        <div>
+          <h1 class="pg-title">Testes de Distância LoRa</h1>
+          <p class="pg-sub">Simulação de medições para fins académicos (250m a 1500m)</p>
+        </div>
+        <button class="mc-btn mc-btn-primary" onclick="runAllTests()" style="width:auto; padding: 0.6rem 1.5rem;">
+          <svg class="inline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Executar Todos os Testes
+        </button>
+      </div>
+
+      <div class="malaria-warnings-grid" id="distance-tests-grid">
+        <!-- Test cards will be injected here -->
+        <div class="loading-state">
+          <p>Aguardando execução dos testes...</p>
+        </div>
+      </div>
+
+      <div class="tbl-card" style="margin-top: 1.5rem;">
+        <div class="tbl-head"><p class="tbl-title">Log de Testes Recentes</p></div>
+        <div class="tbl-scroll">
+          <table class="evt-table">
+            <thead><tr>
+              <th>Hora</th><th>Distância</th><th>RSSI Médio</th><th>SNR</th><th>Perda de Pacotes</th><th>Estado</th>
+            </tr></thead>
+            <tbody id="test-log-tbody"><tr><td colspan="6" class="tbl-empty">Sem registos de testes.</td></tr></tbody>
+          </table>
+        </div>
       </div>
     </section>
 

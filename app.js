@@ -35,6 +35,15 @@ const S = {
   uptime: 0, crcErr: 0,
 };
 
+/* ── ACADEMIC TESTS STATE ── */
+const DISTANCE_TESTS = [
+  { distance: 250, rssi: 0, snr: 0, loss: 0, status: 'pending' },
+  { distance: 750, rssi: 0, snr: 0, loss: 0, status: 'pending' },
+  { distance: 1250, rssi: 0, snr: 0, loss: 0, status: 'pending' },
+  { distance: 1500, rssi: 0, snr: 0, loss: 0, status: 'pending' }
+];
+const testLogs = [];
+
 /* Sparkline history */
 const spk1H = [], spk2H = [];
 const histLog = [];
@@ -91,6 +100,7 @@ function initNav(){
         s.classList.add('active'); 
         if(sec==='historico') drawIrmHistChart();
         if(sec==='avisos-malaria') renderMalariaWarnings();
+        if(sec==='testes') { renderDistanceTests(); renderTestLogs(); }
       }
       closeSidebar();
     });
@@ -768,6 +778,120 @@ window.viewDistrictDetails = function(districtName) {
   
   showToast(`Detalhes — ${districtName}`, message, 'info', 'info');
 };
+
+/* ══════════════════════════════════════════════════
+   ACADEMIC DISTANCE TESTS LOGIC
+══════════════════════════════════════════════════ */
+
+window.runAllTests = async function() {
+  showToast('Iniciando Testes', 'Executando baterias de teste de 250m a 1500m...', 'info', 'satellite');
+  
+  for (const test of DISTANCE_TESTS) {
+    test.status = 'running';
+    renderDistanceTests();
+    
+    // Simulate some delay for "measuring"
+    await new Promise(r => setTimeout(r, 800));
+    
+    // Fictitious Formula Logic
+    // RSSI = -90 - (distance / 40) + random(-3, 3)
+    test.rssi = Math.round(-90 - (test.distance / 35) + (Math.random() * 6 - 3));
+    // SNR = 10 - (distance / 150) + random(-2, 2)
+    test.snr = +(10 - (test.distance / 120) + (Math.random() * 4 - 2)).toFixed(1);
+    // Loss = simplified exponential-ish growth
+    test.loss = test.distance <= 500 ? randI(0, 1) : test.distance <= 1000 ? randI(2, 8) : randI(15, 35);
+    
+    test.status = 'completed';
+    test.lastRun = now();
+    
+    // Add to logs
+    testLogs.unshift({
+      time: test.lastRun,
+      distance: `${test.distance}m`,
+      rssi: `${test.rssi} dBm`,
+      snr: `${test.snr} dB`,
+      loss: `${test.loss}%`,
+      st: test.rssi > -115 ? 'ok' : test.rssi > -125 ? 'warn' : 'danger'
+    });
+    
+    renderDistanceTests();
+    renderTestLogs();
+  }
+  
+  showToast('Testes Concluídos', 'Todas as medições foram registadas com sucesso.', 'success', 'check');
+};
+
+function renderDistanceTests() {
+  const container = document.getElementById('distance-tests-grid');
+  if (!container) return;
+  
+  container.innerHTML = DISTANCE_TESTS.map(test => {
+    const isRunning = test.status === 'running';
+    const isCompleted = test.status === 'completed';
+    
+    return `
+    <div class="malaria-card ${isCompleted ? (test.rssi > -120 ? 'risk-low' : 'risk-medium') : ''}">
+      <div class="mc-header">
+        <h3>Ponto de Teste: ${test.distance} metros</h3>
+        <span class="mc-risk-badge ${test.status === 'pending' ? '' : test.status === 'running' ? 'medium' : (test.rssi > -120 ? 'low' : 'high')}">
+          <span class="mc-risk-dot ${isRunning ? 'live-dot' : ''}"></span>
+          ${test.status.toUpperCase()}
+        </span>
+      </div>
+      
+      <div class="mc-content">
+        <div class="mc-row">
+          <div class="mc-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>
+          <div class="mc-row-text">
+            <div class="mc-row-label">RSSI LoRa</div>
+            <div class="mc-row-value">${isCompleted ? test.rssi + ' dBm' : (isRunning ? 'Medindo...' : '--')}</div>
+          </div>
+        </div>
+        
+        <div class="mc-row">
+          <div class="mc-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 2l5 9.5A6 6 0 1 1 6 11.5L11 2z"/></svg></div>
+          <div class="mc-row-text">
+            <div class="mc-row-label">SNR (Sinal/Ruído)</div>
+            <div class="mc-row-value">${isCompleted ? test.snr + ' dB' : (isRunning ? 'Analisando...' : '--')}</div>
+          </div>
+        </div>
+        
+        <div class="mc-row">
+          <div class="mc-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div>
+          <div class="mc-row-text">
+            <div class="mc-row-label">Perda de Pacotes</div>
+            <div class="mc-row-value">${isCompleted ? test.loss + '%' : (isRunning ? 'Contando...' : '--')}</div>
+          </div>
+        </div>
+
+        <div class="mc-coords" style="margin-top: 0.5rem; font-size: 0.7rem;">
+          SF12 | BW125 | CR4/5 | Freq: 915MHz
+        </div>
+      </div>
+    </div>
+    `;
+  }).join('');
+}
+
+function renderTestLogs() {
+  const tb = document.getElementById('test-log-tbody');
+  if (!tb) return;
+  
+  if (!testLogs.length) {
+    tb.innerHTML = '<tr><td colspan="6" class="tbl-empty">Sem registos de testes.</td></tr>';
+    return;
+  }
+  
+  tb.innerHTML = testLogs.slice(0, 15).map(log => `
+    <tr>
+      <td style="font-family:var(--font-mono);font-size:.72rem;color:var(--text3)">${log.time}</td>
+      <td style="font-weight:600;color:var(--accent)">${log.distance}</td>
+      <td style="font-family:var(--font-mono)">${log.rssi}</td>
+      <td style="font-family:var(--font-mono)">${log.snr}</td>
+      <td style="color:var(--danger)">${log.loss}</td>
+      <td><span class="tag ${log.st}">${log.st === 'ok' ? 'ESTÁVEL' : log.st === 'warn' ? 'DEGRADADO' : 'CRÍTICO'}</span></td>
+    </tr>`).join('');
+}
 
 /* ══════════════════════════════════════════════════
    CONTROLS
