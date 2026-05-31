@@ -643,18 +643,17 @@ const DISTRICTS_WARNINGS = [
   }
 ];
 
-let currentFilterMalaria = 'all';
+let currentFilterMalaria = 'high';
 
 function renderMalariaWarnings() {
   const container = document.getElementById('malaria-warnings-grid');
   if (!container) return;
   
-  const filtered = currentFilterMalaria === 'all' 
-    ? DISTRICTS_WARNINGS 
-    : DISTRICTS_WARNINGS.filter(d => d.risk === currentFilterMalaria);
+  // User Requirement: Only show HIGH risk in this section
+  const filtered = DISTRICTS_WARNINGS.filter(d => d.risk === 'high');
   
   if (!filtered.length) {
-    container.innerHTML = '<div class="loading-state"><p>Nenhum aviso encontrado para o filtro selecionado.</p></div>';
+    container.innerHTML = '<div class="loading-state"><p>Nenhum alerta de RISCO ALTO detectado no momento.</p></div>';
     return;
   }
   
@@ -865,7 +864,7 @@ function renderDistanceTests() {
         </div>
 
         <div class="mc-coords" style="margin-top: 0.5rem; font-size: 0.7rem;">
-          SF12 | BW125 | CR4/5 | Freq: 915MHz
+          SF12 | BW125 | CR4/5 | Freq: 433MHz
         </div>
       </div>
     </div>
