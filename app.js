@@ -1,5 +1,5 @@
 /* ══════════════════════════════════════════════════
-   MalariaWatch — App Logic
+   PRO-VigiMAT — App Logic
    Simulated IoT: TX1, TX2 (LoRa emitters) + RX (receiver)
    IRM: Índice de Risco de Malária
 ══════════════════════════════════════════════════ */
@@ -36,12 +36,7 @@ const S = {
 };
 
 /* ── ACADEMIC TESTS STATE ── */
-const DISTANCE_TESTS = [
-  { distance: 250, rssi: 0, snr: 0, loss: 0, status: 'pending' },
-  { distance: 750, rssi: 0, snr: 0, loss: 0, status: 'pending' },
-  { distance: 1250, rssi: 0, snr: 0, loss: 0, status: 'pending' },
-  { distance: 1500, rssi: 0, snr: 0, loss: 0, status: 'pending' }
-];
+let DISTANCE_TESTS = [];
 const testLogs = [];
 
 /* Sparkline history */
@@ -171,6 +166,7 @@ function applyVigiMatToState(result) {
   // Convert VigiMat risk assessment to IRM scale (0-100)
   S.irm = result.summary.currentRisk === "ALTO" ? 85 : result.summary.currentRisk === "MEDIO" ? 50 : 20;
   S.risk = result.summary.currentRisk.toLowerCase();
+  S.stagnationMsg = result.summary.stagnationMsg;
   
   // Sync totals and metadata
   S.rx.pkts = result.summary.totalReadings;
@@ -312,7 +308,20 @@ function renderKPIs(){
   const wc=(S.tx1.w?1:0)+(S.tx2.on&&S.tx2.w?1:0);
   const we=document.getElementById('kpi-water');
   if(we){ we.textContent=wc?`${wc} sensor(es)`:'Não detectada'; we.style.color=wc?'var(--danger)':'var(--accent2)'; }
-  set('kpi-water-h', wc?'Criadouro potencial':'Ambiente seco');
+  
+  const waterHint = document.getElementById('kpi-water-h');
+  if (waterHint) {
+    if (S.stagnationMsg) {
+      waterHint.textContent = S.stagnationMsg;
+      waterHint.style.color = 'var(--danger)';
+      waterHint.style.fontWeight = 'bold';
+    } else {
+      waterHint.textContent = wc ? 'Criadouro potencial' : 'Ambiente seco';
+      waterHint.style.color = 'var(--text3)';
+      waterHint.style.fontWeight = 'normal';
+    }
+  }
+
   set('kpi-irm', `${S.irm}/100`);
   const pill=document.getElementById('kpi-risk-pill');
   if(pill){ pill.textContent=riskPT(S.risk); pill.className=`risk-pill ${S.risk}`; }
@@ -735,7 +744,7 @@ window.filterMalariaWarnings = function(value) {
 window.refreshMalariaWarnings = async function() {
   if (CFG.useRealData) {
     try {
-      // Example: fetch('https://api.malariawatch.org/v1/districts')
+      // Example: fetch('https://api.PRO-VigiMAT.org/v1/districts')
       // For now, we simulate the update
       simulateDistrictUpdate();
     } catch (error) {
@@ -782,47 +791,58 @@ window.viewDistrictDetails = function(districtName) {
    ACADEMIC DISTANCE TESTS LOGIC
 ══════════════════════════════════════════════════ */
 
-window.runAllTests = async function() {
-  showToast('Iniciando Testes', 'Executando baterias de teste de 250m a 1500m...', 'info', 'satellite');
+window.simulateCustomDistance = async function() {
+  const distInput = document.getElementById('test-dist');
+  const distance = parseInt(distInput?.value);
   
-  for (const test of DISTANCE_TESTS) {
-    test.status = 'running';
-    renderDistanceTests();
-    
-    // Simulate some delay for "measuring"
-    await new Promise(r => setTimeout(r, 800));
-    
-    // Fictitious Formula Logic
-    // RSSI = -90 - (distance / 40) + random(-3, 3)
-    test.rssi = Math.round(-90 - (test.distance / 35) + (Math.random() * 6 - 3));
-    // SNR = 10 - (distance / 150) + random(-2, 2)
-    test.snr = +(10 - (test.distance / 120) + (Math.random() * 4 - 2)).toFixed(1);
-    // Loss = simplified exponential-ish growth
-    test.loss = test.distance <= 500 ? randI(0, 1) : test.distance <= 1000 ? randI(2, 8) : randI(15, 35);
-    
-    test.status = 'completed';
-    test.lastRun = now();
-    
-    // Add to logs
-    testLogs.unshift({
-      time: test.lastRun,
-      distance: `${test.distance}m`,
-      rssi: `${test.rssi} dBm`,
-      snr: `${test.snr} dB`,
-      loss: `${test.loss}%`,
-      st: test.rssi > -115 ? 'ok' : test.rssi > -125 ? 'warn' : 'danger'
-    });
-    
-    renderDistanceTests();
-    renderTestLogs();
+  if (!distance || distance <= 0) {
+    showToast('Valor Inválido', 'Insira uma distância válida em metros.', 'warn', 'warning');
+    return;
   }
+
+  showToast('Simulando Captação', `Testando alcance para ${distance}m...`, 'info', 'satellite');
   
-  showToast('Testes Concluídos', 'Todas as medições foram registadas com sucesso.', 'success', 'check');
+  const test = { distance, status: 'running', rssi: 0, snr: 0, loss: 0 };
+  DISTANCE_TESTS.unshift(test); 
+  if (DISTANCE_TESTS.length > 6) DISTANCE_TESTS.pop(); 
+  
+  renderDistanceTests();
+  
+  // Simulate delay
+  await new Promise(r => setTimeout(r, 1000));
+  
+  // Fictitious Formula Logic
+  test.rssi = Math.round(-90 - (test.distance / 35) + (Math.random() * 6 - 3));
+  test.snr = +(10 - (test.distance / 120) + (Math.random() * 4 - 2)).toFixed(1);
+  test.loss = test.distance <= 500 ? randI(0, 1) : test.distance <= 1000 ? randI(2, 8) : randI(15, 35);
+  
+  test.status = 'completed';
+  test.lastRun = now();
+  
+  // Add to logs
+  testLogs.unshift({
+    time: test.lastRun,
+    distance: `${test.distance}m`,
+    rssi: `${test.rssi} dBm`,
+    snr: `${test.snr} dB`,
+    loss: `${test.loss}%`,
+    st: test.rssi > -115 ? 'ok' : test.rssi > -125 ? 'warn' : 'danger'
+  });
+  
+  renderDistanceTests();
+  renderTestLogs();
+  
+  showToast('Simulação Concluída', `Dados captados para ${distance}m.`, 'success', 'check');
 };
 
 function renderDistanceTests() {
   const container = document.getElementById('distance-tests-grid');
   if (!container) return;
+  
+  if (!DISTANCE_TESTS.length) {
+    container.innerHTML = '<div class="loading-state"><p>Aguardando entrada de distância para iniciar a simulação académica...</p></div>';
+    return;
+  }
   
   container.innerHTML = DISTANCE_TESTS.map(test => {
     const isRunning = test.status === 'running';
@@ -832,7 +852,7 @@ function renderDistanceTests() {
     <div class="malaria-card ${isCompleted ? (test.rssi > -120 ? 'risk-low' : 'risk-medium') : ''}">
       <div class="mc-header">
         <h3>Ponto de Teste: ${test.distance} metros</h3>
-        <span class="mc-risk-badge ${test.status === 'pending' ? '' : test.status === 'running' ? 'medium' : (test.rssi > -120 ? 'low' : 'high')}">
+        <span class="mc-risk-badge ${test.status === 'running' ? 'medium' : (test.rssi > -120 ? 'low' : 'high')}">
           <span class="mc-risk-dot ${isRunning ? 'live-dot' : ''}"></span>
           ${test.status.toUpperCase()}
         </span>
@@ -903,7 +923,7 @@ window.exportCSV=()=>{
   const csv=rows.map(r=>r.join(',')).join('\n');
   const blob=new Blob([csv],{type:'text/csv'});
   const url=URL.createObjectURL(blob);
-  const a=document.createElement('a'); a.href=url; a.download=`malariawatch-${Date.now()}.csv`; a.click();
+  const a=document.createElement('a'); a.href=url; a.download=`PRO-VigiMAT-${Date.now()}.csv`; a.click();
   URL.revokeObjectURL(url);
 };
 

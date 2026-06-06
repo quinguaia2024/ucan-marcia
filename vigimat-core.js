@@ -148,54 +148,69 @@ class AlertService {
 
         const latest = readings[0];
         
-        // Preventive Alert: 3 consecutive readings with water in same range
-        if (readings.length >= 3) {
-            const r0 = readings[0], r1 = readings[1], r2 = readings[2];
-            const TOLERANCE = 200; 
-            const WATER_THRESHOLD = 2000;
+        // --- Progressive Water Stagnation Logic ---
+        const WATER_THRESHOLD = 2000; // Value below this indicates water
+        const TOLERANCE = 50;         // Stability tolerance
 
-            const checkWaterRange = (val0, val1, val2) => {
-                if (val0 === undefined || val1 === undefined || val2 === undefined) return false;
-                const isWater = val0 < WATER_THRESHOLD && val1 < WATER_THRESHOLD && val2 < WATER_THRESHOLD;
-                const inRange = Math.abs(val0 - val1) < TOLERANCE && Math.abs(val1 - val2) < TOLERANCE;
-                return isWater && inRange;
+        const checkStagnation = (sensorKey) => {
+            let count = 0;
+            const initialVal = readings[0][sensorKey];
+            
+            // Sensor must detect water first
+            if (initialVal === undefined || initialVal >= WATER_THRESHOLD) return 0;
+
+            for (let i = 0; i < readings.length; i++) {
+                const currentVal = readings[i][sensorKey];
+                if (currentVal !== undefined && Math.abs(currentVal - initialVal) <= TOLERANCE) {
+                    count++;
+                } else {
+                    break;
+                }
+            }
+            return count;
+        };
+
+        const tx1StagnationCount = checkStagnation('rain1');
+        const tx2StagnationCount = checkStagnation('rain2');
+
+        const generateStagnationAlert = (sensorId, count) => {
+            if (count < 2) return null; // Need at least 2 readings (30s interval)
+
+            let severity = "info";
+            let riskLvl = "BAIXO";
+            let timeDesc = count === 2 ? "30 segundos" : `${(count - 1) * 30} segundos`;
+
+            if (count >= 6) {
+                severity = "danger";
+                riskLvl = "ALTO";
+            } else if (count >= 4) {
+                severity = "warn";
+                riskLvl = "MÉDIO";
+            }
+
+            return {
+                timestamp: latest.timestamp,
+                type: `STAGNATION_${sensorId}`,
+                severity: severity,
+                title: `RISCO ${riskLvl} - Água Estagnada (${sensorId})`,
+                icon: "water",
+                message: `Valores de água permanecem constantes há ${timeDesc}. Risco de criadouro identificado.`
             };
+        };
 
-            const tx1Risk = checkWaterRange(r0.rain1, r1.rain1, r2.rain1);
-            const tx2Risk = checkWaterRange(r0.rain2, r1.rain2, r2.rain2);
+        const alert1 = generateStagnationAlert("TX1", tx1StagnationCount);
+        if (alert1) alerts.push(alert1);
 
-            const timeDiffMinutes = Math.round((r0.timestamp - r2.timestamp) / 60);
+        const alert2 = generateStagnationAlert("TX2", tx2StagnationCount);
+        if (alert2) alerts.push(alert2);
 
-            if (tx1Risk) {
-                alerts.push({
-                    timestamp: r0.timestamp,
-                    type: "PREVENTIVE_TX1",
-                    severity: "danger",
-                    title: "ALERTA PREVENTIVO - TX1",
-                    icon: "water",
-                    message: `TX1 detectou água estagnada há ${timeDiffMinutes} min. Risco de criadouro identificado.`
-                });
-            }
-
-            if (tx2Risk) {
-                alerts.push({
-                    timestamp: r0.timestamp,
-                    type: "PREVENTIVE_TX2",
-                    severity: "danger",
-                    title: "ALERTA PREVENTIVO - TX2",
-                    icon: "water",
-                    message: `TX2 detectou água estagnada há ${timeDiffMinutes} min. Risco de criadouro identificado.`
-                });
-            }
-        }
-
-        // Standard risk alerts (only for the latest reading)
+        // --- Standard risk alerts (Global IRM) ---
         if (latest.risk === "ALTO") {
             alerts.push({
                 timestamp: latest.timestamp,
                 type: "HIGH_RISK",
                 severity: "danger",
-                title: "RISCO ALTO",
+                title: "RISCO ALTO GLOBAL",
                 icon: "alert",
                 message: "Elevado risco ambiental detectado no local."
             });
@@ -204,7 +219,7 @@ class AlertService {
                 timestamp: latest.timestamp,
                 type: "MEDIUM_RISK",
                 severity: "warn",
-                title: "RISCO MÉDIO",
+                title: "RISCO MÉDIO GLOBAL",
                 icon: "warning",
                 message: "Condições moderadamente favoráveis identificadas."
             });
@@ -260,11 +275,32 @@ class TrendService {
 class DashboardService {
     static getSummary(readings, stats, alerts, trends) {
         const latest = readings[0] || {};
+        let currentRisk = latest.risk || "BAIXO";
+
+        // --- Priority: Water Stagnation overrides Temperature-based risk ---
+        const stagnationAlerts = alerts.filter(a => a.type.startsWith("STAGNATION_"));
+        const hasHighStagnation = stagnationAlerts.some(a => a.severity === "danger");
+        const hasMedStagnation = stagnationAlerts.some(a => a.severity === "warn");
+
+        if (hasHighStagnation) {
+            currentRisk = "ALTO";
+        } else if (hasMedStagnation && currentRisk !== "ALTO") {
+            currentRisk = "MEDIO";
+        }
+
         const highEvents = alerts.filter(a => a.type === "HIGH_RISK").length;
         const mediumEvents = alerts.filter(a => a.type === "MEDIUM_RISK").length;
 
+        // Get max stagnation time for UI display
+        let maxStagnationMsg = "";
+        if (stagnationAlerts.length > 0) {
+            // Sort by severity and then by time (message contains the time)
+            const critical = stagnationAlerts.find(a => a.severity === "danger") || stagnationAlerts[0];
+            maxStagnationMsg = critical.message;
+        }
+
         return {
-            currentRisk: latest.risk || "BAIXO",
+            currentRisk: currentRisk,
             averageTemperature: stats.avgTemp,
             averageHumidity: stats.avgHum,
             totalReadings: stats.total,
@@ -272,7 +308,8 @@ class DashboardService {
             mediumRiskEvents: mediumEvents,
             temperatureTrend: trends.temp,
             humidityTrend: trends.hum,
-            riskTrend: trends.risk
+            riskTrend: trends.risk,
+            stagnationMsg: maxStagnationMsg
         };
     }
 
