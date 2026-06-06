@@ -152,7 +152,7 @@ function applyVigiMatToState(result) {
   S.tx1 = { 
     t: latest.temp1 || 0, 
     h: latest.hum1 || 13, 
-    w: (latest.rain1 < 2000), // Assuming lower value means water present (typical for these sensors)
+    w: (latest.rain1 < 1200), // Assuming lower value means water present (typical for these sensors)
     rssi: -60, // Fixed placeholder as DB doesn't have it
     on: !!latest.temp1 
   };
@@ -160,7 +160,7 @@ function applyVigiMatToState(result) {
   S.tx2 = { 
     t: latest.temp2 || 0, 
     h: latest.hum2 || 0, 
-    w: (latest.rain2 < 2000), 
+    w: (latest.rain2 < 1200), 
     rssi: -65, 
     on: !!latest.temp2 
   };

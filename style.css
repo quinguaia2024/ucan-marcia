@@ -633,6 +633,9 @@ input[type="number"]:focus, select:focus { border-color: var(--accent); box-shad
   .tx-metrics { grid-template-columns: 1fr 1fr; }
   .nb-right .rx-pill { display: none; }
   .pg-title { font-size: 1.2rem; }
+  .pg-head { flex-direction: column; align-items: stretch; gap: 1rem; }
+  .pg-actions { overflow-x: auto; padding-bottom: 0.5rem; }
+  .pg-actions > div { min-width: max-content; }
   .malaria-warnings-grid { grid-template-columns: 1fr; }
   .filter-row { flex-direction: column; align-items: stretch; }
   .filter-group select { min-width: auto; }

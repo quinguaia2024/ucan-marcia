@@ -170,11 +170,11 @@ function renderChart(chartData) {
       datasets: [{
         label: 'Nível de Risco',
         data: chartData.risk.map(d => d.value),
-        borderColor: '#00e8c6',
-        backgroundColor: 'rgba(0, 232, 198, 0.1)',
+        borderColor: '#0d9488',
+        backgroundColor: 'rgba(13, 148, 136, 0.1)',
         borderWidth: 3,
         pointRadius: 4,
-        pointBackgroundColor: '#00e8c6',
+        pointBackgroundColor: '#0d9488',
         tension: 0.4,
         fill: true
       }]
@@ -191,12 +191,12 @@ function renderChart(chartData) {
             callback: function(value) {
               return ['BAIXO', 'MÉDIO', 'ALTO'][value - 1];
             },
-            color: '#8fafc8'
+            color: '#64748b'
           },
-          grid: { color: 'rgba(255, 255, 255, 0.05)' }
+          grid: { color: '#f1f5f9' }
         },
         x: {
-          ticks: { color: '#8fafc8', maxRotation: 0 },
+          ticks: { color: '#64748b', maxRotation: 0 },
           grid: { display: false }
         }
       }
