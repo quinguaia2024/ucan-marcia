@@ -145,11 +145,13 @@ function initFirebase() {
 
 function applyVigiMatToState(result) {
   const latest = result.readings[0] || {};
-  
+  const isNewReading = latest.timestamp && latest.timestamp !== S.lastTimestamp;
+  S.lastTimestamp = latest.timestamp;
+
   // Map VigiMat data to existing UI state S
   S.tx1 = { 
     t: latest.temp1 || 0, 
-    h: latest.hum1 || 0, 
+    h: latest.hum1 || 13, 
     w: (latest.rain1 < 2000), // Assuming lower value means water present (typical for these sensors)
     rssi: -60, // Fixed placeholder as DB doesn't have it
     on: !!latest.temp1 
@@ -167,6 +169,8 @@ function applyVigiMatToState(result) {
   S.irm = result.summary.currentRisk === "ALTO" ? 85 : result.summary.currentRisk === "MEDIO" ? 50 : 20;
   S.risk = result.summary.currentRisk.toLowerCase();
   S.stagnationMsg = result.summary.stagnationMsg;
+  S.tx1Stagnation = result.summary.tx1Stagnation;
+  S.tx2Stagnation = result.summary.tx2Stagnation;
   
   // Sync totals and metadata
   S.rx.pkts = result.summary.totalReadings;
@@ -223,6 +227,32 @@ function applyVigiMatToState(result) {
   S.hist.t2 = result.readings.map(r => r.temp2).reverse().slice(-CFG.histMax);
   S.hist.hum = result.chartData.humidity.map(d => d.value).slice(-CFG.histMax);
   S.hist.irm = result.chartData.risk.map(d => d.value * 33).slice(-CFG.histMax); // Map 1,2,3 to 0-100 scale
+
+  if (isNewReading) {
+    triggerNewReadingIndicator('tx1');
+    triggerNewReadingIndicator('tx2');
+  }
+}
+
+function triggerNewReadingIndicator(id) {
+  const container = document.getElementById(`${id}-new-tag-container`);
+  if (!container) return;
+  
+  // Clear previous if still animating
+  container.innerHTML = '';
+  
+  const tag = document.createElement('span');
+  tag.className = 'new-reading-tag';
+  tag.textContent = 'NOVA LEITURA';
+  
+  container.appendChild(tag);
+  
+  // Cleanup after animation finishes (matching CSS duration)
+  setTimeout(() => {
+    if (tag.parentNode === container) {
+      container.removeChild(tag);
+    }
+  }, 1600);
 }
 
 /**
@@ -330,6 +360,21 @@ function renderKPIs(){
 /* ── TX CARD ── */
 function renderTX(id){
   const tx=S[id];
+  const stagCount = S[`${id}Stagnation`] || 0;
+  
+  /* risk pill */
+  const rp = document.getElementById(`${id}-risk-pill`);
+  if (rp) {
+    let risk = 'low';
+    let label = 'RISCO BAIXO';
+    if (stagCount >= 6) { risk = 'high'; label = 'RISCO ALTO'; }
+    else if (stagCount >= 4) { risk = 'medium'; label = 'RISCO MÉDIO'; }
+    
+    rp.className = `risk-pill ${risk}`;
+    rp.textContent = label;
+    rp.style.display = tx.on ? 'inline-block' : 'none';
+  }
+
   /* status */
   const sEl=document.getElementById(`${id}-status`);
   if(sEl){ sEl.className=`tx-status ${tx.on?'online':'offline'}`; sEl.innerHTML=`<span class="st-dot"></span>${tx.on?'ONLINE':'OFFLINE'}`; }
@@ -384,6 +429,18 @@ function renderIRM(){
   fillBar('if-hum',   clamp((avgH-28)/70*100,0,100));
   fillBar('if-water', water*50);
   drawGauge(S.irm,S.risk);
+
+  /* prevention alert area */
+  const alertArea = document.getElementById('irm-prevention-alert');
+  const alertMsg = document.getElementById('irm-prevention-msg');
+  if (alertArea && alertMsg) {
+    if (S.stagnationMsg) {
+      alertArea.style.display = 'block';
+      alertMsg.textContent = S.stagnationMsg;
+    } else {
+      alertArea.style.display = 'none';
+    }
+  }
 }
 
 function fillBar(id,pct){

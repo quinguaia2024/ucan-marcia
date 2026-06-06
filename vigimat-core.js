@@ -142,36 +142,35 @@ class StatisticsService {
  * Módulo 4 — Alertas
  */
 class AlertService {
+    static checkStagnation(readings, sensorKey) {
+        const WATER_THRESHOLD = 2000;
+        const TOLERANCE = 50;
+        if (!readings.length) return 0;
+        
+        let count = 0;
+        const initialVal = readings[0][sensorKey];
+        
+        if (initialVal === undefined || initialVal >= WATER_THRESHOLD) return 0;
+
+        for (let i = 0; i < readings.length; i++) {
+            const currentVal = readings[i][sensorKey];
+            if (currentVal !== undefined && Math.abs(currentVal - initialVal) <= TOLERANCE) {
+                count++;
+            } else {
+                break;
+            }
+        }
+        return count;
+    }
+
     static process(readings) {
         const alerts = [];
         if (readings.length === 0) return alerts;
 
         const latest = readings[0];
         
-        // --- Progressive Water Stagnation Logic ---
-        const WATER_THRESHOLD = 2000; // Value below this indicates water
-        const TOLERANCE = 50;         // Stability tolerance
-
-        const checkStagnation = (sensorKey) => {
-            let count = 0;
-            const initialVal = readings[0][sensorKey];
-            
-            // Sensor must detect water first
-            if (initialVal === undefined || initialVal >= WATER_THRESHOLD) return 0;
-
-            for (let i = 0; i < readings.length; i++) {
-                const currentVal = readings[i][sensorKey];
-                if (currentVal !== undefined && Math.abs(currentVal - initialVal) <= TOLERANCE) {
-                    count++;
-                } else {
-                    break;
-                }
-            }
-            return count;
-        };
-
-        const tx1StagnationCount = checkStagnation('rain1');
-        const tx2StagnationCount = checkStagnation('rain2');
+        const tx1StagnationCount = this.checkStagnation(readings, 'rain1');
+        const tx2StagnationCount = this.checkStagnation(readings, 'rain2');
 
         const generateStagnationAlert = (sensorId, count) => {
             if (count < 2) return null; // Need at least 2 readings (30s interval)
@@ -277,6 +276,9 @@ class DashboardService {
         const latest = readings[0] || {};
         let currentRisk = latest.risk || "BAIXO";
 
+        const tx1StagnationCount = AlertService.checkStagnation(readings, 'rain1');
+        const tx2StagnationCount = AlertService.checkStagnation(readings, 'rain2');
+
         // --- Priority: Water Stagnation overrides Temperature-based risk ---
         const stagnationAlerts = alerts.filter(a => a.type.startsWith("STAGNATION_"));
         const hasHighStagnation = stagnationAlerts.some(a => a.severity === "danger");
@@ -309,7 +311,9 @@ class DashboardService {
             temperatureTrend: trends.temp,
             humidityTrend: trends.hum,
             riskTrend: trends.risk,
-            stagnationMsg: maxStagnationMsg
+            stagnationMsg: maxStagnationMsg,
+            tx1Stagnation: tx1StagnationCount,
+            tx2Stagnation: tx2StagnationCount
         };
     }
 

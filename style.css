@@ -427,6 +427,28 @@ body::after {
 .tag.danger { background: var(--danger-bg);   color: var(--danger);  border: 1px solid var(--danger-border); }
 .tag.info   { background: var(--accent-dim);  color: var(--accent);  border: 1px solid rgba(0,119,204,.25); }
 
+/* New Reading Flash Indicator */
+.new-reading-tag {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 800;
+  background: var(--accent2);
+  color: #fff;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  margin-left: 0.5rem;
+  animation: flash-in 1.5s ease forwards;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+@keyframes flash-in {
+  0% { opacity: 0; transform: scale(0.8); }
+  20% { opacity: 1; transform: scale(1.1); }
+  80% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.9); }
+}
+
 /* ══════════════ SENSOR SECTION ══════════════ */
 .sensor-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: var(--gap); }
 .sensor-card { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.2rem; box-shadow: var(--shadow); }

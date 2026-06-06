@@ -203,12 +203,16 @@
             <div class="txc-id">
               <span class="tx-badge">TX1</span>
               <span class="tx-name">Emissor 1</span>
+              <span id="tx1-new-tag-container"></span>
               <div class="lora-bars" id="tx1-lora">
                 <span></span><span></span><span></span>
               </div>
             </div>
-            <div class="tx-status online" id="tx1-status">
-              <span class="st-dot"></span>ONLINE
+            <div style="display:flex; gap: 0.4rem; align-items:center;">
+              <span class="risk-pill low" id="tx1-risk-pill" style="font-size: 0.6rem; padding: 0.2rem 0.5rem;">RISCO BAIXO</span>
+              <div class="tx-status online" id="tx1-status">
+                <span class="st-dot"></span>ONLINE
+              </div>
             </div>
           </div>
           <div class="tx-metrics">
@@ -280,12 +284,16 @@
             <div class="txc-id">
               <span class="tx-badge">TX2</span>
               <span class="tx-name">Emissor 2</span>
+              <span id="tx2-new-tag-container"></span>
               <div class="lora-bars" id="tx2-lora">
                 <span></span><span></span><span></span>
               </div>
             </div>
-            <div class="tx-status online" id="tx2-status">
-              <span class="st-dot"></span>ONLINE
+            <div style="display:flex; gap: 0.4rem; align-items:center;">
+              <span class="risk-pill low" id="tx2-risk-pill" style="font-size: 0.6rem; padding: 0.2rem 0.5rem;">RISCO BAIXO</span>
+              <div class="tx-status online" id="tx2-status">
+                <span class="st-dot"></span>ONLINE
+              </div>
             </div>
           </div>
           <div class="tx-metrics">
@@ -342,6 +350,10 @@
             <div class="if-row"><span>Temperatura</span><div class="if-bar"><div id="if-temp" class="if-fill"></div></div></div>
             <div class="if-row"><span>Humidade</span><div class="if-bar"><div id="if-hum"  class="if-fill"></div></div></div>
             <div class="if-row"><span>Água presente</span><div class="if-bar"><div id="if-water" class="if-fill"></div></div></div>
+          </div>
+          <div id="irm-prevention-alert" style="margin-top: 1rem; padding: 0.75rem; border-radius: var(--radius-sm); background: var(--bg); border: 1px solid var(--border2); display: none;">
+            <p style="font-size: 0.65rem; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.3rem;">Alertas de Prevenção</p>
+            <p id="irm-prevention-msg" style="font-size: 0.75rem; font-weight: 500; color: var(--danger); line-height: 1.4;"></p>
           </div>
         </div>
 
