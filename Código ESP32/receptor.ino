@@ -1,8 +1,8 @@
 /*
  * VigiMat - Recetor LoRa + Firebase
  * 
- * Recebe pacotes LoRa dos nós 1 e 2, calcula o risco de malária
- * e envia os dados para o Firebase Realtime Database.
+ * Recebe pacotes LoRa dos nós 1 e 2, agrega os dados, calcula o risco
+ * e envia um registo combinado para o Firebase Realtime Database.
  */
 
 #include <WiFi.h>
@@ -23,23 +23,35 @@
 #define LORA_SS   5
 #define LORA_RST  14
 #define LORA_DIO0 2
-#define LORA_FREQ 433E6          // Mesma frequência dos transmissores
+#define LORA_FREQ 433E6
 
 // ========== CONFIGURAÇÕES DE RISCO ==========
-// Regras: ALTO: T>=25, H>=70, água; MÉDIO: T>=22, H>=60
 #define RISK_HIGH_TEMP 25.0
 #define RISK_HIGH_HUM  70.0
 #define RISK_MED_TEMP  22.0
 #define RISK_MED_HUM   60.0
+
+// ========== ESTRUTURA DE DADOS DOS NÓS ==========
+struct NodeData {
+  float temp = 0.0;
+  float hum = 0.0;
+  int rainVal = 4095;
+  bool water = false;
+  unsigned long lastUpdate = 0; // Timestamp da última atualização
+};
+
+NodeData node1Data;
+NodeData node2Data;
 
 // ========== OBJETOS FIREBASE ==========
 FirebaseData fbdo;
 FirebaseAuth auth;
 FirebaseConfig config;
 
-unsigned long lastAlertTime = 0;
-String lastRiskSent = "";
-const unsigned long ALERT_COOLDOWN = 60000;  // 60 seg
+// ========== CONTROLO DE ENVIO ==========
+unsigned long lastSendToFirebase = 0;
+const unsigned long FIREBASE_SEND_INTERVAL = 30000; // Enviar a cada 30 segundos
+const unsigned long NODE_TIMEOUT = 65000; // Considerar nó offline após 65 segundos
 
 // ========== FUNÇÕES AUXILIARES ==========
 void connectWiFi() {
@@ -53,7 +65,7 @@ void connectWiFi() {
 }
 
 void initNTP() {
-  configTime(3600, 0, "pool.ntp.org");  // UTC+1
+  configTime(3600, 0, "pool.ntp.org");
   Serial.print("Sincronizando horário...");
   struct tm timeinfo;
   while (!getLocalTime(&timeinfo)) delay(500);
@@ -61,71 +73,78 @@ void initNTP() {
 }
 
 unsigned long getTimestamp() {
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo)) return millis() / 1000;
-  return mktime(&timeinfo);
+  time_t now;
+  time(&now);
+  return now;
 }
 
-String calculateRisk(float temp, float hum, bool water) {
-  if (temp >= RISK_HIGH_TEMP && hum >= RISK_HIGH_HUM && water)
+String calculateRisk(float avgTemp, float avgHum, bool water1, bool water2) {
+  if (avgTemp >= RISK_HIGH_TEMP && avgHum >= RISK_HIGH_HUM && (water1 || water2))
     return "ALTO";
-  else if (temp >= RISK_MED_TEMP && hum >= RISK_MED_HUM)
+  else if (avgTemp >= RISK_MED_TEMP && avgHum >= RISK_MED_HUM)
     return "MEDIO";
   else
     return "BAIXO";
 }
 
-void sendToFirebase(int nodeId, float temp, float hum, int rainValue, bool water, unsigned long ts) {
+void sendToFirebase() {
   if (!Firebase.ready()) {
     Serial.println("Firebase não pronto.");
     return;
   }
-  
-  String risk = calculateRisk(temp, hum, water);
-  
-  // Caminho único para cada nó: /readings/node_X/
-  String path = "/readings/node_" + String(nodeId);
-  
-  FirebaseJson json;
-  json.set("temp", temp);
-  json.set("hum", hum);
-  json.set("rain", rainValue);
-  json.set("water", water);
-  json.set("risk", risk);
-  json.set("timestamp", ts);
-  
-  Serial.printf("Enviando nó %d para Firebase...", nodeId);
-  if (Firebase.RTDB.pushJSON(&fbdo, path, &json)) {
-    Serial.println(" OK");
-  } else {
-    Serial.printf(" Falha: %s\n", fbdo.errorReason().c_str());
+
+  // Verificar se ambos os nós estão online
+  bool node1_online = (millis() - node1Data.lastUpdate) < NODE_TIMEOUT;
+  bool node2_online = (millis() - node2Data.lastUpdate) < NODE_TIMEOUT;
+
+  if (!node1_online && !node2_online) {
+    Serial.println("Ambos os nós offline. A aguardar...");
+    return;
   }
-  
-  // Actualizar estado actual do risco para este nó
-  String currentPath = "/currentRisk/node_" + String(nodeId);
-  Firebase.RTDB.setString(&fbdo, currentPath + "/level", risk);
-  Firebase.RTDB.setFloat(&fbdo, currentPath + "/avgTemp", temp);
-  Firebase.RTDB.setFloat(&fbdo, currentPath + "/avgHum", hum);
-  Firebase.RTDB.setBool(&fbdo, currentPath + "/water", water);
-  Firebase.RTDB.setInt(&fbdo, currentPath + "/timestamp", ts);
-  
-  // Gerar alerta se risco for ALTO ou MÉDIO (com cooldown)
-  if ((risk == "ALTO" || risk == "MEDIO") && 
-      (risk != lastRiskSent || (millis() - lastAlertTime) > ALERT_COOLDOWN)) {
-    
-    FirebaseJson alertJson;
-    alertJson.set("nodeId", nodeId);
-    alertJson.set("risk", risk);
-    alertJson.set("temp", temp);
-    alertJson.set("hum", hum);
-    alertJson.set("water", water);
-    alertJson.set("timestamp", ts);
-    
-    if (Firebase.RTDB.pushJSON(&fbdo, "/alerts", &alertJson)) {
-      Serial.println(" Alerta enviado!");
-      lastRiskSent = risk;
-      lastAlertTime = millis();
-    }
+
+  // Usar dados do nó que estiver online, ou a média se ambos estiverem
+  float t1 = node1_online ? node1Data.temp : 0;
+  float h1 = node1_online ? node1Data.hum : 0;
+  int r1 = node1_online ? node1Data.rainVal : 4095;
+  bool w1 = node1_online ? node1Data.water : false;
+
+  float t2 = node2_online ? node2Data.temp : 0;
+  float h2 = node2_online ? node2Data.hum : 0;
+  int r2 = node2_online ? node2Data.rainVal : 4095;
+  bool w2 = node2_online ? node2Data.water : false;
+
+  float avgTemp, avgHum;
+  if (node1_online && node2_online) {
+    avgTemp = (t1 + t2) / 2.0;
+    avgHum = (h1 + h2) / 2.0;
+  } else if (node1_online) {
+    avgTemp = t1;
+    avgHum = h1;
+  } else {
+    avgTemp = t2;
+    avgHum = h2;
+  }
+
+  String risk = calculateRisk(avgTemp, avgHum, w1, w2);
+  unsigned long ts = getTimestamp();
+
+  FirebaseJson json;
+  json.set("temp1", String(t1, 1));
+  json.set("hum1", String(h1, 1));
+  json.set("rain1", r1);
+  json.set("temp2", String(t2, 1));
+  json.set("hum2", String(h2, 1));
+  json.set("rain2", r2);
+  json.set("avgTemp", String(avgTemp, 1));
+  json.set("avgHum", String(avgHum, 1));
+  json.set("risk", risk);
+  json.set("timestamp", (int)ts);
+
+  Serial.println("Enviando dados agregados para Firebase...");
+  if (Firebase.RTDB.pushJSON(&fbdo, "/readings", &json)) {
+    Serial.println(" -> OK");
+  } else {
+    Serial.printf(" -> Falha: %s\n", fbdo.errorReason().c_str());
   }
 }
 
@@ -136,15 +155,14 @@ void setupLoRa() {
     Serial.println(" Falha!");
     while (1);
   }
-  LoRa.setSyncWord(0xF3);   // deve ser igual ao dos transmissores
+  LoRa.setSyncWord(0xF3);
   Serial.println(" OK");
 }
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("\n=== Recetor LoRa + Firebase ===");
+  Serial.println("\n=== Recetor LoRa Agregador + Firebase ===");
   
-  // Wi-Fi e Firebase
   connectWiFi();
   initNTP();
   
@@ -161,22 +179,13 @@ void setup() {
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
   
-  Serial.print("Aguardando Firebase...");
-  int attempts = 0;
-  while (!Firebase.ready() && attempts < 20) {
-    delay(500);
-    Serial.print(".");
-    attempts++;
-  }
-  Serial.println(Firebase.ready() ? " Pronto" : " Falha");
-  
-  // LoRa
   setupLoRa();
   
   Serial.println("Aguardando pacotes LoRa...\n");
 }
 
 void loop() {
+  // 1. Verificar se há pacotes LoRa
   int packetSize = LoRa.parsePacket();
   if (packetSize) {
     String packet = "";
@@ -184,7 +193,6 @@ void loop() {
       packet += (char)LoRa.read();
     }
     
-    // Exemplo de pacote: "1,25.3,68.2,1024,0"
     int firstComma = packet.indexOf(',');
     int secondComma = packet.indexOf(',', firstComma + 1);
     int thirdComma = packet.indexOf(',', secondComma + 1);
@@ -197,16 +205,32 @@ void loop() {
       int rainVal = packet.substring(thirdComma + 1, fourthComma).toInt();
       bool water = (packet.substring(fourthComma + 1).toInt() == 1);
       
-      unsigned long ts = getTimestamp();
+      Serial.printf("Pacote recebido (Nó %d): T=%.1f H=%.1f R=%d W=%d\n", nodeId, temp, hum, rainVal, water);
       
-      Serial.printf("Pacote recebido (Nó %d): T=%.1f°C H=%.1f%% Água=%d (%s)\n",
-                    nodeId, temp, hum, rainVal, water ? "SIM" : "NÃO");
-      
-      sendToFirebase(nodeId, temp, hum, rainVal, water, ts);
-      Serial.println("----------------------------------------\n");
+      if (nodeId == 1) {
+        node1Data.temp = temp;
+        node1Data.hum = hum;
+        node1Data.rainVal = rainVal;
+        node1Data.water = water;
+        node1Data.lastUpdate = millis();
+      } else if (nodeId == 2) {
+        node2Data.temp = temp;
+        node2Data.hum = hum;
+        node2Data.rainVal = rainVal;
+        node2Data.water = water;
+        node2Data.lastUpdate = millis();
+      }
     } else {
       Serial.println("Pacote inválido: " + packet);
     }
   }
+
+  // 2. Verificar se é hora de enviar para o Firebase
+  if (millis() - lastSendToFirebase >= FIREBASE_SEND_INTERVAL) {
+    lastSendToFirebase = millis();
+    sendToFirebase();
+    Serial.println("----------------------------------------\n");
+  }
+  
   delay(10);
 }
