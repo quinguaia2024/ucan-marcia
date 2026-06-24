@@ -851,7 +851,7 @@ window.simulateDistanceTest = async function(distance) {
   const test = distanceTestState[distance];
   if (test.status === 'running') return;
 
-  showToast('Teste iniciado', `A verificar a ligação a ${distance} metros...`, 'info', 'satellite');
+  showToast('Teste iniciado', `A verificar a ligação...`, 'info', 'satellite');
 
   test.status = 'running';
   renderDistanceTests();
@@ -866,7 +866,7 @@ window.simulateDistanceTest = async function(distance) {
 
   testLogs.unshift({
     time: test.lastRun,
-    distance: `${distance}m`,
+    distance: `Teste ${PRESET_DISTANCES.indexOf(distance) + 1}`,
     rssi: `${test.rssi} dBm`,
     snr: `${test.snr} dB`,
     loss: `${test.loss}%`,
@@ -876,14 +876,14 @@ window.simulateDistanceTest = async function(distance) {
   renderDistanceTests();
   renderTestLogs();
 
-  showToast('Teste concluído', `A ligação a ${distance} m foi avaliada com sucesso.`, 'success', 'check');
+  showToast('Teste concluído', `A ligação foi avaliada com sucesso.`, 'success', 'check');
 };
 
 function renderDistanceTests() {
   const container = document.getElementById('distance-tests-grid');
   if (!container) return;
 
-  container.innerHTML = PRESET_DISTANCES.map(distance => {
+  container.innerHTML = PRESET_DISTANCES.map((distance, index) => {
     const test = distanceTestState[distance];
     const isRunning = test.status === 'running';
     const isCompleted = test.status === 'completed';
@@ -891,7 +891,7 @@ function renderDistanceTests() {
     return `
     <div class="malaria-card ${isCompleted ? (test.rssi > -120 ? 'risk-low' : 'risk-medium') : ''}">
       <div class="mc-header">
-        <h3>${distance} metros</h3>
+        <h3>Teste de Ligação ${index + 1}</h3>
         <span class="mc-risk-badge ${isRunning ? 'medium' : isCompleted ? (test.rssi > -120 ? 'low' : 'high') : 'low'}">
           <span class="mc-risk-dot ${isRunning ? 'live-dot' : ''}"></span>
           ${isRunning ? 'Em curso' : isCompleted ? 'Concluído' : 'Pronto para testar'}
