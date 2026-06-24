@@ -25,6 +25,7 @@ const S = {
   hist: { lbl:[], t1:[], t2:[], hum:[], irm:[] },
   events: [], alerts: [],
   uptime: 0, crcErr: 0,
+  systemStatus: 'active',
 };
 
 /* ── ACADEMIC TESTS STATE ── */
@@ -39,6 +40,7 @@ const testLogs = [];
 const spk1H = [], spk2H = [];
 const histLog = [];
 let timer;
+let inactivityTimer;
 
 /* ── UTILS ── */
 const rand  = (a,b) => +(Math.random()*(b-a)+a).toFixed(1);
@@ -127,10 +129,24 @@ const riskPT = r=>({low:'BAIXO',medium:'MÉDIO',high:'ALTO'}[r]||'--');
    DATA ACQUISITION (FIREBASE INTEGRATION)
 ══════════════════════════════════════════════════ */
 
+function handleInactivity() {
+  S.systemStatus = 'inactive';
+  S.rx.lora = false; // Set lora status to offline
+  renderAll();
+  showToast('Sistema Inactivo', 'Não foram recebidos novos dados no último minuto.', 'danger', 'signal');
+}
+
+function resetInactivityTimer() {
+  S.systemStatus = 'active';
+  clearTimeout(inactivityTimer);
+  inactivityTimer = setTimeout(handleInactivity, 60000); // 1 minute
+}
+
 function initFirebase() {
   VigiMat.init();
   VigiMat.firebase.onReadingsUpdate((rawReadings) => {
     if (rawReadings.length > 0) {
+      resetInactivityTimer();
       const result = VigiMat.processData(rawReadings);
       applyVigiMatToState(result);
       renderAll();
@@ -139,6 +155,7 @@ function initFirebase() {
 }
 
 function applyVigiMatToState(result) {
+  S.systemStatus = 'active';
   const latest = result.readings[0] || {};
   const isNewReading = latest.timestamp && latest.timestamp !== S.lastTimestamp;
   S.lastTimestamp = latest.timestamp;
@@ -147,7 +164,7 @@ function applyVigiMatToState(result) {
   S.tx1 = { 
     t: jitter(latest.temp1 || 0, 1.2), 
     h: randI(64, 82), 
-    w: (latest.rain1 < 1200), // Assuming lower value means water present (typical for these sensors)
+    w: (latest.rain1 < 2000), // Assuming lower value means water present (typical for these sensors)
     rssi: jitter(-60, 4), 
     on: !!latest.temp1 
   };
@@ -155,7 +172,7 @@ function applyVigiMatToState(result) {
   S.tx2 = { 
     t: jitter(latest.temp2 || 0, 1.2), 
     h: randI(64, 82), 
-    w: (latest.rain2 < 1200), 
+    w: (latest.rain2 < 2000), 
     rssi: jitter(-65, 4), 
     on: !!latest.temp2 
   };
@@ -255,7 +272,7 @@ function doAlerts(prev1,prev2){
   if(!S.tx2.on&&prev2.on){ addEvt('TX2','Sem comunicação','Sem resposta','danger'); pushAlert('TX2 indisponível','O sensor TX2 deixou de responder.','danger','signal'); }
   /* Back online */
   if(S.tx1.on&&!prev1.on){ addEvt('TX1','Ligação restabelecida','Comunicação activa','ok'); pushAlert('TX1 disponível','O sensor TX1 voltou a responder.','info','check'); }
-  if(S.tx2.on&&!prev2.on){ addEvt('TX2','Ligação restabelecida','Comunicação activa','ok'); pushAlert('TX2 disponível','O sensor TX2 voltou a responder.','info','check'); }
+  if(!S.tx2.on&&prev2.on){ addEvt('TX2','Ligação restabelecida','Comunicação activa','ok'); pushAlert('TX2 disponível','O sensor TX2 voltou a responder.','info','check'); }
   /* IRM level change */
   const prev=riskOf(S.hist.irm.slice(-2)[0]||0);
   if(S.risk!==prev){
@@ -393,11 +410,33 @@ function renderRX(){
   const wEl=document.getElementById('rx-wifi');
   if(wEl){ wEl.textContent=S.rx.wifi?'LIGADO':'DESLIGADO'; wEl.className=`rxs-val ${S.rx.wifi?'online':'offline'}`; }
   const lEl=document.getElementById('rx-lora');
-  if(lEl){ lEl.textContent=S.rx.lora?'ACTIVO':'SEM SINAL'; lEl.className=`rxs-val ${S.rx.lora?'online':'offline'}`; }
+  if(lEl){
+    if (S.systemStatus === 'inactive') {
+      lEl.textContent='INACTIVO';
+      lEl.className=`rxs-val offline`;
+    } else {
+      lEl.textContent=S.rx.lora?'ACTIVO':'SEM SINAL';
+      lEl.className=`rxs-val ${S.rx.lora?'online':'offline'}`;
+    }
+  }
   /* Navbar pill */
   const led=document.getElementById('rx-led'), st=document.getElementById('rx-st');
-  if(led) led.className=`rx-led${S.rx.lora?'':' off'}`;
-  if(st){ st.textContent=S.rx.lora?'ONLINE':'OFFLINE'; st.className=`rx-st${S.rx.lora?'':' off'}`; }
+  if(led) {
+    if (S.systemStatus === 'inactive') {
+        led.className=`rx-led off`;
+    } else {
+        led.className=`rx-led${S.rx.lora?'':' off'}`;
+    }
+  }
+  if(st){
+    if (S.systemStatus === 'inactive') {
+        st.textContent='INACTIVO';
+        st.className=`rx-st off`;
+    } else {
+        st.textContent=S.rx.lora?'ONLINE':'OFFLINE';
+        st.className=`rx-st${S.rx.lora?'':' off'}`;
+    }
+  }
 }
 
 /* ── IRM ── */
@@ -1022,6 +1061,7 @@ async function boot(){
   
   if (CFG.useRealData) {
     initFirebase();
+    resetInactivityTimer();
   } else {
     renderAll();
     renderMalariaWarnings();

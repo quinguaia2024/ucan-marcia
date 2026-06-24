@@ -25,6 +25,7 @@ const RECOMMENDATIONS = {
 
 let currentRisk = 'BAIXO';
 let riskChart = null;
+let inactivityUserTimer;
 
 /* ── UTILS ── */
 const now = () => new Date().toLocaleTimeString('pt-BR', { hour12: false });
@@ -220,6 +221,18 @@ window.closeDrawer = () => {
 document.getElementById('menu-toggle').addEventListener('click', toggleMenu);
 document.getElementById('drawer-close').addEventListener('click', closeDrawer);
 
+function handleUserInactivity() {
+    const dot = document.getElementById('conn-dot');
+    const text = document.getElementById('conn-text');
+    dot.className = 'conn-dot offline';
+    text.textContent = 'Inactivo (sem dados > 1 min)';
+}
+
+function resetUserInactivityTimer() {
+    clearTimeout(inactivityUserTimer);
+    inactivityUserTimer = setTimeout(handleUserInactivity, 60000);
+}
+
 /* ── BOOT ── */
 function init() {
   initPreloader();
@@ -234,6 +247,7 @@ function init() {
   VigiMat.init();
   VigiMat.firebase.onReadingsUpdate((raw) => {
     if (raw.length > 0) {
+      resetUserInactivityTimer();
       const data = VigiMat.processData(raw);
       updateUI(data);
       
@@ -244,6 +258,7 @@ function init() {
       text.textContent = 'Actualizado agora';
     }
   });
+  resetUserInactivityTimer();
 }
 
 document.addEventListener('DOMContentLoaded', init);

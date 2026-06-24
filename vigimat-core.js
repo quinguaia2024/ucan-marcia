@@ -143,7 +143,7 @@ class StatisticsService {
  */
 class AlertService {
     static checkStagnation(readings, sensorKey) {
-        const WATER_THRESHOLD = 1200;
+        const WATER_THRESHOLD = 2000;
         const TOLERANCE = 50;
         if (!readings.length) return 0;
         
