@@ -856,13 +856,41 @@ window.simulateDistanceTest = async function(distance) {
   test.status = 'running';
   renderDistanceTests();
 
-  await new Promise(r => setTimeout(r, 1000));
+  await new Promise(r => setTimeout(r, randI(1500, 2500)));
 
-  test.rssi = Math.round(-90 - (distance / 35) + (Math.random() * 6 - 3));
-  test.snr = +(10 - (distance / 120) + (Math.random() * 4 - 2)).toFixed(1);
-  test.loss = distance <= 500 ? randI(0, 1) : distance <= 1000 ? randI(2, 8) : randI(15, 35);
+  // Theoretical calculations from the document
+  const fspl = 20 * Math.log10(distance) + 25.172;
+  const rssiTeorico = 24 - fspl;
+
+  // Simulate real-world conditions with random degradation
+  const urbanLoss = rand(15, 35); // Additional loss in dB for urban environment
+  test.rssi = Math.round(rssiTeorico - urbanLoss + jitter(0, 5));
+  
+  // Simulate SNR based on distance (higher distance = lower SNR)
+  test.snr = +(12 - (distance / 100) + jitter(0, 2.5)).toFixed(1);
+
+  // Simulate Packet Loss Rate (TPP) based on distance
+  test.loss = clamp(rand(0, 5) + (distance / 250), 0, 100).toFixed(1);
+  if (test.rssi < -120) {
+    test.loss = clamp(parseFloat(test.loss) + rand(20, 40), 10, 100).toFixed(1);
+  }
+
   test.status = 'completed';
   test.lastRun = now();
+
+  // Determine status based on metrics
+  const getStatus = (rssi, snr, loss) => {
+    let rssiSt = 'ok', snrSt = 'ok', lossSt = 'ok';
+    if (rssi <= -120) rssiSt = 'danger'; else if (rssi <= -115) rssiSt = 'warn';
+    if (snr < -5) snrSt = 'danger'; else if (snr < 0) snrSt = 'warn';
+    if (loss > 10) lossSt = 'danger'; else if (loss > 5) lossSt = 'warn';
+    
+    if (rssiSt === 'danger' || snrSt === 'danger' || lossSt === 'danger') return 'danger';
+    if (rssiSt === 'warn' || snrSt === 'warn' || lossSt === 'warn') return 'warn';
+    return 'ok';
+  };
+
+  const finalStatus = getStatus(test.rssi, test.snr, test.loss);
 
   testLogs.unshift({
     time: test.lastRun,
@@ -870,13 +898,13 @@ window.simulateDistanceTest = async function(distance) {
     rssi: `${test.rssi} dBm`,
     snr: `${test.snr} dB`,
     loss: `${test.loss}%`,
-    st: test.rssi > -115 ? 'ok' : test.rssi > -125 ? 'warn' : 'danger'
+    st: finalStatus
   });
 
   renderDistanceTests();
   renderTestLogs();
 
-  showToast('Teste concluído', `A ligação foi avaliada com sucesso.`, 'success', 'check');
+  showToast('Teste concluído', `A ligação foi avaliada com sucesso.`, 'info', 'check');
 };
 
 function renderDistanceTests() {
