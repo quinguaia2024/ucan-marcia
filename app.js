@@ -28,11 +28,26 @@ const S = {
   systemStatus: 'active',
 };
 
-/* ── ACADEMIC TESTS STATE ── */
-const PRESET_DISTANCES = [250, 500, 1000, 1500];
-const distanceTestState = {};
-PRESET_DISTANCES.forEach(d => {
-  distanceTestState[d] = { distance: d, status: 'idle', rssi: null, snr: null, loss: null };
+/* ── COMMUNICATION TEST STATE ── */
+// Each module has independent packet loss tracking per the academic methodology:
+// TPP (Taxa de Perda de Pacotes) = ((Pkts_enviados - Pkts_recebidos) / Pkts_enviados) × 100
+const TX_MODULES = [
+  { id: 'tx1', label: 'TX1', name: 'Emissor 1' },
+  { id: 'tx2', label: 'TX2', name: 'Emissor 2' }
+];
+
+const commTestState = {};
+TX_MODULES.forEach(m => {
+  commTestState[m.id] = {
+    id: m.id,
+    label: m.label,
+    name: m.name,
+    status: 'idle',
+    pktsSent: null,
+    pktsReceived: null,
+    lossPct: null,
+    lastRun: null
+  };
 });
 const testLogs = [];
 
@@ -130,8 +145,19 @@ const riskPT = r=>({low:'BAIXO',medium:'MÉDIO',high:'ALTO'}[r]||'--');
 ══════════════════════════════════════════════════ */
 
 function handleInactivity() {
+  // Mark system as inactive and reset sensor and dashboard data
   S.systemStatus = 'inactive';
-  S.rx.lora = false; // Set lora status to offline
+  // Reset sensor states
+  S.tx1 = { t: 0, h: 0, w: false, rssi: -110, on: false };
+  S.tx2 = { t: 0, h: 0, w: false, rssi: -110, on: false };
+  // Reset receiver and risk metrics
+  S.rx = { pkts: 0, sync: '--', wifi: false, lora: false };
+  S.irm = 0;
+  S.risk = 'low';
+  S.stagnationMsg = '';
+  // Clear historical data arrays
+  S.hist = { lbl: [], t1: [], t2: [], hum: [], irm: [] };
+  // Update UI to reflect inactive state
   renderAll();
   showToast('Sistema Inactivo', 'Não foram recebidos novos dados no último minuto.', 'danger', 'signal');
 }
@@ -881,122 +907,255 @@ window.viewDistrictDetails = function(districtName) {
 };
 
 /* ══════════════════════════════════════════════════
-   ACADEMIC DISTANCE TESTS LOGIC
+   MÓDULO DE TESTES DE COMUNICAÇÃO
+   Métrica: TPP — Taxa de Perda de Pacotes
+   Fórmula: TPP = ((Pkts_enviados - Pkts_recebidos) / Pkts_enviados) × 100
+   Calculada individualmente para TX1 e TX2
 ══════════════════════════════════════════════════ */
 
-window.simulateDistanceTest = async function(distance) {
-  if (!PRESET_DISTANCES.includes(distance)) return;
+/**
+ * Simulates a packet loss test for a specific TX module.
+ * Uses the academic methodology: sends a burst of N packets and counts
+ * how many are received, deriving TPP per module independently.
+ *
+ * Rules:
+ *  - If sensor is OFFLINE → test is BLOCKED; no metric is produced.
+ *  - TX1 and TX2 are at identical distances: their base loss is shared,
+ *    each module gets a small ±2% independent variation on top.
+ */
+window.runPacketLossTest = async function(moduleId) {
+  const test = commTestState[moduleId];
+  if (!test || test.status === 'running') return;
 
-  const test = distanceTestState[distance];
-  if (test.status === 'running') return;
+  // ── Guard: sensor must be online ──────────────────────────────────────
+  const sensorState = S[moduleId];
+  const isOnline = sensorState && sensorState.on;
 
-  showToast('Teste iniciado', `A verificar a ligação...`, 'info', 'satellite');
+  if (!isOnline) {
+    showToast(
+      `${test.label}: Teste impossível`,
+      'Parâmetros indisponíveis — o sensor está OFFLINE e não há recepção de dados.',
+      'danger',
+      'signal'
+    );
+    return; // abort — no test while offline
+  }
+
+  showToast(`Teste ${test.label} iniciado`, 'A enviar pacotes de teste...', 'info', 'signal');
 
   test.status = 'running';
   renderDistanceTests();
 
-  await new Promise(r => setTimeout(r, randI(1500, 2500)));
+  // Simulate packet burst transmission (academic standard: 100 packets)
+  const PKTS_TOTAL = 100;
+  await new Promise(r => setTimeout(r, randI(2000, 3500)));
 
-  // Theoretical calculations from the document
-  const fspl = 20 * Math.log10(distance) + 25.172;
-  const rssiTeorico = 24 - fspl;
-
-  // Simulate real-world conditions with random degradation
-  const urbanLoss = rand(15, 35); // Additional loss in dB for urban environment
-  test.rssi = Math.round(rssiTeorico - urbanLoss + jitter(0, 5));
-  
-  // Simulate SNR based on distance (higher distance = lower SNR)
-  test.snr = +(12 - (distance / 100) + jitter(0, 2.5)).toFixed(1);
-
-  // Simulate Packet Loss Rate (TPP) based on distance
-  test.loss = clamp(rand(0, 5) + (distance / 250), 0, 100).toFixed(1);
-  if (test.rssi < -120) {
-    test.loss = clamp(parseFloat(test.loss) + rand(20, 40), 10, 100).toFixed(1);
+  // ── Correlated loss model (TX1 ≈ TX2, same distance) ──────────────────
+  // Both modules share an environmental base loss drawn once per test run.
+  // The base is stored in a module-level variable so the second module
+  // references the same draw (within its ±2% individual deviation).
+  if (!window._sharedBaseLoss || window._sharedBaseLossId !== moduleId) {
+    // First module to run generates the shared base (good link: LoRa SF12 @ 433 MHz)
+    window._sharedBaseLoss = rand(0, 8); // % base loss for both TX at this distance
   }
 
-  test.status = 'completed';
-  test.lastRun = now();
+  // Each module independently varies ±2% around the shared base
+  const deviation = rand(-2, 2);
+  const effectiveLoss = Math.max(0, Math.min(100, window._sharedBaseLoss + deviation));
 
-  // Determine status based on metrics
-  const getStatus = (rssi, snr, loss) => {
-    let rssiSt = 'ok', snrSt = 'ok', lossSt = 'ok';
-    if (rssi <= -120) rssiSt = 'danger'; else if (rssi <= -115) rssiSt = 'warn';
-    if (snr < -5) snrSt = 'danger'; else if (snr < 0) snrSt = 'warn';
-    if (loss > 10) lossSt = 'danger'; else if (loss > 5) lossSt = 'warn';
-    
-    if (rssiSt === 'danger' || snrSt === 'danger' || lossSt === 'danger') return 'danger';
-    if (rssiSt === 'warn' || snrSt === 'warn' || lossSt === 'warn') return 'warn';
-    return 'ok';
-  };
+  const pktsReceived = Math.round(PKTS_TOTAL * (1 - effectiveLoss / 100));
 
-  const finalStatus = getStatus(test.rssi, test.snr, test.loss);
+  // Mark this module as "consumed" — next different module resets the base
+  window._sharedBaseLossId = moduleId === 'tx1' ? 'tx2' : 'tx1';
+
+  test.pktsSent     = PKTS_TOTAL;
+  test.pktsReceived = pktsReceived;
+  // TPP Formula: ((enviados - recebidos) / enviados) × 100
+  test.lossPct      = +((( PKTS_TOTAL - pktsReceived) / PKTS_TOTAL) * 100).toFixed(1);
+  test.status       = 'completed';
+  test.lastRun      = now();
+
+  // Qualitative classification
+  const quality = test.lossPct <= 5 ? 'ok' : test.lossPct <= 15 ? 'warn' : 'danger';
+  const qualityLabel = { ok: 'Boa', warn: 'Aceitável', danger: 'Crítica' }[quality];
 
   testLogs.unshift({
-    time: test.lastRun,
-    distance: `Teste ${PRESET_DISTANCES.indexOf(distance) + 1}`,
-    rssi: `${test.rssi} dBm`,
-    snr: `${test.snr} dB`,
-    loss: `${test.loss}%`,
-    st: finalStatus
+    time:     test.lastRun,
+    module:   `${test.label} — ${test.name}`,
+    sent:     PKTS_TOTAL,
+    received: pktsReceived,
+    loss:     `${test.lossPct}%`,
+    quality,
+    qualityLabel
   });
 
   renderDistanceTests();
   renderTestLogs();
 
-  showToast('Teste concluído', `A ligação foi avaliada com sucesso.`, 'info', 'check');
+  showToast(
+    `${test.label}: Teste concluído`,
+    `Perda de pacotes: ${test.lossPct}% — ${qualityLabel}`,
+    quality,
+    quality === 'ok' ? 'check' : 'signal'
+  );
 };
+
+function lossStatusClass(lossPct) {
+  if (lossPct === null) return '';
+  if (lossPct <= 5)  return 'risk-low';
+  if (lossPct <= 15) return 'risk-medium';
+  return 'risk-high';
+}
+
+function lossBadgeClass(lossPct, isRunning) {
+  if (isRunning) return 'medium';
+  if (lossPct === null) return 'low';
+  if (lossPct <= 5)  return 'low';
+  if (lossPct <= 15) return 'medium';
+  return 'high';
+}
 
 function renderDistanceTests() {
   const container = document.getElementById('distance-tests-grid');
   if (!container) return;
 
-  container.innerHTML = PRESET_DISTANCES.map((distance, index) => {
-    const test = distanceTestState[distance];
-    const isRunning = test.status === 'running';
+  container.innerHTML = TX_MODULES.map(m => {
+    const test = commTestState[m.id];
+    const isRunning   = test.status === 'running';
     const isCompleted = test.status === 'completed';
+    const sensorOnline = S[m.id] && S[m.id].on;
+
+    // ── OFFLINE state: test blocked ───────────────────────────────────────
+    if (!sensorOnline) {
+      return `
+      <div class="malaria-card risk-high" id="commtest-${m.id}" style="opacity:0.85">
+        <div class="mc-header">
+          <div style="display:flex;align-items:center;gap:0.6rem">
+            <span class="tx-badge" style="font-size:0.8rem;padding:0.25rem 0.6rem;background:var(--danger);color:#fff">${m.label}</span>
+            <h3 style="margin:0;font-size:0.95rem">${m.name}</h3>
+          </div>
+          <span class="mc-risk-badge high">
+            <span class="mc-risk-dot"></span>
+            Sem ligação
+          </span>
+        </div>
+
+        <div class="mc-content">
+          <!-- Sensor offline indicator -->
+          <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;padding:0.5rem 0.6rem;border-radius:var(--radius-sm);background:var(--bg);border:1px solid var(--danger)">
+            <span style="width:8px;height:8px;border-radius:50%;background:var(--danger);flex-shrink:0"></span>
+            <span style="font-size:0.72rem;color:var(--danger);font-weight:600">Sensor OFFLINE — sem recepção de dados</span>
+          </div>
+
+          <!-- Blocked message -->
+          <div style="
+            display:flex;flex-direction:column;align-items:center;justify-content:center;
+            gap:0.6rem;padding:1.5rem 1rem;text-align:center;
+            background:rgba(var(--danger-rgb,220,53,69),0.06);
+            border:1px dashed var(--danger);border-radius:var(--radius-sm);
+          ">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" style="width:28px;height:28px;flex-shrink:0">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+            </svg>
+            <div>
+              <div style="font-size:0.82rem;font-weight:700;color:var(--danger);margin-bottom:0.25rem">Teste indisponível</div>
+              <div style="font-size:0.72rem;color:var(--text3);line-height:1.5">
+                Os parâmetros de comunicação não podem ser<br>
+                medidos pois não há recepção de dados do sensor.
+              </div>
+            </div>
+          </div>
+
+          <!-- Disabled button -->
+          <div class="mc-actions" style="margin-top:0.9rem">
+            <button class="mc-btn mc-btn-primary" disabled style="opacity:0.4;cursor:not-allowed;filter:grayscale(1)">
+              <svg class="inline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+              Teste bloqueado — sensor offline
+            </button>
+          </div>
+        </div>
+      </div>
+      `;
+    }
+
+    // ── ONLINE state: normal card ─────────────────────────────────────────
+    // Build a visual loss bar (0–100%)
+    const barWidth = isCompleted ? test.lossPct : 0;
+    const barColor = test.lossPct <= 5 ? 'var(--accent2)' : test.lossPct <= 15 ? 'var(--warn)' : 'var(--danger)';
+
+    // Badge text
+    const badgeText = isRunning ? 'Em curso…' : isCompleted
+      ? (test.lossPct <= 5 ? 'Boa qualidade' : test.lossPct <= 15 ? 'Aceitável' : 'Ligação crítica')
+      : 'Pronto';
 
     return `
-    <div class="malaria-card ${isCompleted ? (test.rssi > -120 ? 'risk-low' : 'risk-medium') : ''}">
+    <div class="malaria-card ${isCompleted ? lossStatusClass(test.lossPct) : ''}" id="commtest-${m.id}">
       <div class="mc-header">
-        <h3>Teste de Ligação ${index + 1}</h3>
-        <span class="mc-risk-badge ${isRunning ? 'medium' : isCompleted ? (test.rssi > -120 ? 'low' : 'high') : 'low'}">
+        <div style="display:flex;align-items:center;gap:0.6rem">
+          <span class="tx-badge" style="font-size:0.8rem;padding:0.25rem 0.6rem">${m.label}</span>
+          <h3 style="margin:0;font-size:0.95rem">${m.name}</h3>
+        </div>
+        <span class="mc-risk-badge ${lossBadgeClass(test.lossPct, isRunning)}">
           <span class="mc-risk-dot ${isRunning ? 'live-dot' : ''}"></span>
-          ${isRunning ? 'Em curso' : isCompleted ? 'Concluído' : 'Pronto para testar'}
+          ${badgeText}
         </span>
       </div>
 
       <div class="mc-content">
-        <div class="mc-row">
-          <div class="mc-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>
-          <div class="mc-row-text">
-            <div class="mc-row-label">RSSI LoRa</div>
-            <div class="mc-row-value">${isCompleted ? test.rssi + ' dBm' : (isRunning ? 'A medir...' : '—')}</div>
+
+        <!-- Sensor link status context -->
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;padding:0.5rem 0.6rem;border-radius:var(--radius-sm);background:var(--bg);border:1px solid var(--border)">
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--accent2);flex-shrink:0"></span>
+          <span style="font-size:0.72rem;color:var(--text3)">Sensor </span>
+          <span style="font-size:0.72rem;font-weight:600;color:var(--accent2)">ONLINE — ligação activa</span>
+        </div>
+
+        <!-- TPP metric: packets sent / received -->
+        <div class="mc-row" style="align-items:flex-start">
+          <div class="mc-row-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="7" width="20" height="14" rx="2"/>
+              <path d="M16 7V5a2 2 0 0 0-4 0v2"/>
+              <line x1="12" y1="12" x2="12" y2="16"/>
+            </svg>
+          </div>
+          <div class="mc-row-text" style="flex:1">
+            <div class="mc-row-label">Pacotes enviados / recebidos</div>
+            <div class="mc-row-value" style="font-size:1.05rem">
+              ${isRunning ? '<span style="color:var(--text3);font-size:0.8rem">A transmitir…</span>' :
+                isCompleted ? `<span style="color:var(--text)">${test.pktsSent}</span> <span style="color:var(--text3);font-size:0.75rem">enviados</span> / <span style="color:${test.pktsReceived === test.pktsSent ? 'var(--accent2)' : 'var(--warn)'}">${test.pktsReceived}</span> <span style="color:var(--text3);font-size:0.75rem">recebidos</span>` :
+                '<span style="color:var(--text3);font-size:0.8rem">—</span>'}
+            </div>
           </div>
         </div>
 
-        <div class="mc-row">
-          <div class="mc-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 2l5 9.5A6 6 0 1 1 6 11.5L11 2z"/></svg></div>
-          <div class="mc-row-text">
-            <div class="mc-row-label">SNR (Sinal/Ruído)</div>
-            <div class="mc-row-value">${isCompleted ? test.snr + ' dB' : (isRunning ? 'A analisar...' : '—')}</div>
+        <!-- TPP visual result -->
+        <div style="margin:0.75rem 0 0.25rem">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.35rem">
+            <span style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em">TPP — Taxa de Perda de Pacotes</span>
+            <span style="font-size:1.15rem;font-weight:700;font-family:var(--font-mono);color:${
+              !isCompleted ? 'var(--text3)' : test.lossPct <= 5 ? 'var(--accent2)' : test.lossPct <= 15 ? 'var(--warn)' : 'var(--danger)'
+            }">${isRunning ? '…' : isCompleted ? test.lossPct + '%' : '—'}</span>
+          </div>
+          <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden">
+            <div style="height:100%;width:${barWidth}%;background:${barColor};border-radius:4px;transition:width 0.6s ease"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:0.2rem">
+            <span style="font-size:0.65rem;color:var(--accent2)">0% — Sem perda</span>
+            <span style="font-size:0.65rem;color:var(--danger)">100% — Sem ligação</span>
           </div>
         </div>
 
-        <div class="mc-row">
-          <div class="mc-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div>
-          <div class="mc-row-text">
-            <div class="mc-row-label">Perda de Pacotes</div>
-            <div class="mc-row-value">${isCompleted ? test.loss + '%' : (isRunning ? 'A contar...' : '—')}</div>
-          </div>
+        <!-- Formula footnote -->
+        <div style="margin-top:0.6rem;padding:0.4rem 0.6rem;border-radius:var(--radius-sm);background:var(--bg);border:1px solid var(--border);font-size:0.65rem;color:var(--text3);font-family:var(--font-mono)">
+          TPP = ((Pkts<sub>env</sub> − Pkts<sub>rec</sub>) ÷ Pkts<sub>env</sub>) × 100 &nbsp;|&nbsp; N=100 pkts &nbsp;|&nbsp; SF12 / 433 MHz
         </div>
 
-        <div class="mc-coords" style="margin-top: 0.5rem; font-size: 0.7rem;">
-          SF12 | BW125 | CR4/5 | Freq: 433MHz
-        </div>
-
-        <div class="mc-actions" style="margin-top: 0.75rem;">
-          <button class="mc-btn mc-btn-primary" onclick="simulateDistanceTest(${distance})" ${isRunning ? 'disabled style="opacity:0.6;cursor:not-allowed"' : ''}>
-            <svg class="inline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Iniciar Testes
+        <div class="mc-actions" style="margin-top:0.9rem">
+          <button class="mc-btn mc-btn-primary" onclick="runPacketLossTest('${m.id}')" ${isRunning ? 'disabled style="opacity:0.6;cursor:not-allowed"' : ''}>
+            <svg class="inline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            ${isCompleted ? 'Repetir Teste' : 'Iniciar Teste'}
           </button>
         </div>
       </div>
@@ -1008,20 +1167,19 @@ function renderDistanceTests() {
 function renderTestLogs() {
   const tb = document.getElementById('test-log-tbody');
   if (!tb) return;
-  
+
   if (!testLogs.length) {
-    tb.innerHTML = '<tr><td colspan="6" class="tbl-empty">Ainda não foram realizados testes.</td></tr>';
+    tb.innerHTML = '<tr><td colspan="5" class="tbl-empty">Ainda não foram realizados testes.</td></tr>';
     return;
   }
-  
-  tb.innerHTML = testLogs.slice(0, 15).map(log => `
+
+  tb.innerHTML = testLogs.slice(0, 20).map(log => `
     <tr>
       <td style="font-family:var(--font-mono);font-size:.72rem;color:var(--text3)">${log.time}</td>
-      <td style="font-weight:600;color:var(--accent)">${log.distance}</td>
-      <td style="font-family:var(--font-mono)">${log.rssi}</td>
-      <td style="font-family:var(--font-mono)">${log.snr}</td>
-      <td style="color:var(--danger)">${log.loss}</td>
-      <td><span class="tag ${log.st}">${log.st === 'ok' ? 'Boa' : log.st === 'warn' ? 'Fraca' : 'Crítica'}</span></td>
+      <td style="font-weight:600;color:var(--accent)">${log.module}</td>
+      <td style="font-family:var(--font-mono)">${log.sent}</td>
+      <td style="font-family:var(--font-mono);color:${log.quality === 'ok' ? 'var(--accent2)' : log.quality === 'warn' ? 'var(--warn)' : 'var(--danger)'}">${log.received}</td>
+      <td><span class="tag ${log.quality}">${log.loss} — ${log.qualityLabel}</span></td>
     </tr>`).join('');
 }
 

@@ -1,169 +1,305 @@
 /* ═══════════════════════════════════════════════════════
-   PRO-VigiMAT — Citizen Portal Logic
-   Handles real-time data display and recommendations
+   PRO-VigiMAT — Portal Comunitário — script.js v3.0
+   Alinhado com vigimat-core.js: avgTemp, avgHum, rain1,
+   rain2, risk, tx1Temp, tx2Temp, hum1, hum2 do Firebase
 ════════════════════════════════════════════════════════ */
 'use strict';
 
-// Recommendations data
+/* ── RECOMENDAÇÕES (com ícones SVG inline) ── */
+const ICON = {
+  broom:   `<svg class="rec-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21l7-7"/><path d="M4.5 13.5l6 6"/><path d="M14 3l7 7-10 10-7-7z"/></svg>`,
+  home:    `<svg class="rec-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
+  people:  `<svg class="rec-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+  spray:   `<svg class="rec-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h4l1 5H3z"/><path d="M7 8h9a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H8"/><path d="M8 15v4"/><path d="M12 15v4"/><path d="M14 9V3h4"/></svg>`,
+  shirt:   `<svg class="rec-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.38 3.46L16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.57a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.57a2 2 0 0 0-1.34-2.23z"/></svg>`,
+  water:   `<svg class="rec-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 C8 7 4 11 4 14a8 8 0 0016 0C20 11 16 7 12 2z"/><line x1="12" y1="10" x2="12" y2="16"/><line x1="9" y1="13" x2="15" y2="13"/></svg>`,
+  net:     `<svg class="rec-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2"/><line x1="2" y1="8" x2="22" y2="8"/><line x1="2" y1="14" x2="22" y2="14"/><line x1="8" y1="2" x2="8" y2="22"/><line x1="14" y1="2" x2="14" y2="22"/></svg>`,
+  moon:    `<svg class="rec-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
+  alert:   `<svg class="rec-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+};
+
 const RECOMMENDATIONS = {
   BAIXO: [
-    { title: 'Limpeza de Quintais', desc: 'Mantém o teu quintal livre de recipientes que possam acumular água da chuva.', icon: '🧹' },
-    { title: 'Janelas Protegidas', desc: 'Utiliza redes mosquiteiras em janelas e portas para evitar a entrada de insectos.', icon: '🏠' },
-    { title: 'Vigilância Comunitária', desc: 'Informa os teus vizinhos sobre a importância de manter a zona limpa.', icon: '📢' }
+    { title: 'Limpeza de Quintais',     desc: 'Mantém o teu quintal livre de recipientes que possam acumular água da chuva.',          iconKey: 'broom',  level: 'low' },
+    { title: 'Janelas Protegidas',      desc: 'Utiliza redes mosquiteiras em janelas e portas para evitar a entrada de insectos.',    iconKey: 'home',   level: 'low' },
+    { title: 'Vigilância Comunitária',  desc: 'Informa os teus vizinhos sobre a importância de manter a zona limpa.',                  iconKey: 'people', level: 'low' },
   ],
   MEDIO: [
-    { title: 'Uso de Repelente', desc: 'Aplica repelente nas áreas expostas do corpo, especialmente ao amanhecer e entardecer.', icon: '🧴' },
-    { title: 'Roupa Protegida', desc: 'Veste roupas de mangas compridas e calças se precisares de sair à noite.', icon: '👕' },
-    { title: 'Verificação de Poças', desc: 'Verifica e elimina poças de água estagnada após a chuva na tua vizinhança.', icon: '💧' }
+    { title: 'Uso de Repelente',        desc: 'Aplica repelente nas áreas expostas do corpo, especialmente ao amanhecer e entardecer.', iconKey: 'spray',  level: 'warn' },
+    { title: 'Roupa Protegida',         desc: 'Veste roupas de mangas compridas e calças se precisares de sair à noite.',              iconKey: 'shirt',  level: 'warn' },
+    { title: 'Eliminação de Poças',     desc: 'Verifica e elimina poças de água estagnada após a chuva na tua vizinhança.',            iconKey: 'water',  level: 'warn' },
   ],
   ALTO: [
-    { title: 'Redes Mosquiteiras', desc: 'Dorme SEMPRE debaixo de uma rede mosquiteira tratada com insecticida.', icon: '🕸️' },
-    { title: 'Evitar Saídas Nocturnas', desc: 'Evita actividades ao ar livre durante a noite, quando os mosquitos são mais activos.', icon: '🌙' },
-    { title: 'Destruição de Criadouros', desc: 'Acção imediata para enterrar ou destruir qualquer foco de água parada num raio de 50m.', icon: '🚨' }
+    { title: 'Redes Mosquiteiras',      desc: 'Dorme SEMPRE debaixo de uma rede mosquiteira tratada com insecticida.',                iconKey: 'net',    level: 'danger' },
+    { title: 'Evitar Saídas Nocturnas', desc: 'Evita actividades ao ar livre durante a noite, quando os mosquitos são mais activos.',   iconKey: 'moon',   level: 'danger' },
+    { title: 'Destruição de Criadouros',desc: 'Acção imediata para enterrar ou destruir qualquer foco de água parada num raio de 50 m.',iconKey: 'alert',  level: 'danger' },
   ]
 };
 
 let currentRisk = 'BAIXO';
-let riskChart = null;
-let inactivityUserTimer;
+let riskChart    = null;
+let tempChart    = null;
+let inactivityTimer;
 
 /* ── UTILS ── */
-const now = () => new Date().toLocaleTimeString('pt-BR', { hour12: false });
-const today = () => new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
+const nowTime = () => new Date().toLocaleTimeString('pt-PT', { hour12: false });
+const today   = () => new Date().toLocaleDateString('pt-PT', { weekday: 'long', day: '2-digit', month: 'long' });
+const el      = id  => document.getElementById(id);
 
 /* ── PRELOADER ── */
 function initPreloader() {
-  const status = document.getElementById('pl-status');
-  const msgs = ['Conectando à rede...', 'Sincronizando dados comunitários...', 'Analisando tendências...', 'Pronto.'];
+  const status = el('pl-status');
+  const msgs = ['A ligar à rede...', 'A sincronizar dados...', 'A analisar condições...', 'Pronto.'];
   let i = 0;
   const iv = setInterval(() => {
     if (status && i < msgs.length) status.textContent = msgs[i++];
     else clearInterval(iv);
-  }, 600);
-  
-  setTimeout(() => {
-    document.getElementById('preloader').classList.add('gone');
-  }, 2500);
+  }, 620);
+  setTimeout(() => el('preloader').classList.add('gone'), 2500);
 }
 
-/* ── DATA BINDING ── */
+/* ══════════════════════════════════════════════════════
+   DATA BINDING — alinhado com vigimat-core.js output
+══════════════════════════════════════════════════════ */
 function updateUI(data) {
-  const summary = data.summary;
+  const { summary, readings, chartData } = data;
   currentRisk = summary.currentRisk || 'BAIXO';
-  
-  // Hero section
-  document.getElementById('hero-temp').textContent = `${summary.averageTemperature.toFixed(1)}°C`;
-  document.getElementById('hero-hum').textContent = `${summary.averageHumidity.toFixed(1)}%`;
-  document.getElementById('hero-date').textContent = today();
-  
-  // Risk Orb
-  const orbPct = summary.currentRisk === 'ALTO' ? 85 : summary.currentRisk === 'MEDIO' ? 50 : 20;
-  document.getElementById('orb-pct').textContent = `${orbPct}%`;
-  document.getElementById('orb-lvl').textContent = `RISCO ${summary.currentRisk}`;
-  document.getElementById('orb-tag').textContent = summary.riskTrend === 'Piorando' ? 'Risco em subida' : 'Condições estáveis';
-  
-  const orb = document.getElementById('risk-orb');
-  orb.className = `risk-orb risk-${summary.currentRisk === 'ALTO' ? 'high' : summary.currentRisk === 'MEDIO' ? 'med' : 'low'}`;
-  
-  // Dashboard cards
-  document.getElementById('sv-temp').textContent = `${summary.averageTemperature.toFixed(1)}°C`;
-  document.getElementById('sv-hum').textContent = `${summary.averageHumidity.toFixed(1)}%`;
-  
-  const envVal = document.getElementById('sv-env');
-  if (summary.stagnationMsg) {
-    envVal.textContent = "Criadouro Detectado";
-    envVal.style.color = "var(--c-red)";
-    document.getElementById('orb-tag').textContent = summary.stagnationMsg;
-  } else {
-    envVal.textContent = summary.currentRisk === 'ALTO' ? 'Risco Elevado' : summary.currentRisk === 'MEDIO' ? 'Atenção' : 'Seguro';
-    envVal.style.color = "var(--c-accent)";
-  }
-  
-  document.getElementById('tr-temp').textContent = summary.temperatureTrend;
-  document.getElementById('tr-temp').className = `sc-trend ${summary.temperatureTrend === 'Subindo' ? 'up' : 'down'}`;
-  document.getElementById('tr-hum').textContent = summary.humidityTrend;
-  document.getElementById('tr-hum').className = `sc-trend ${summary.humidityTrend === 'Subindo' ? 'up' : 'down'}`;
-  
-  // Condition Meter
-  document.getElementById('seg-low').classList.toggle('active', summary.currentRisk === 'BAIXO');
-  document.getElementById('seg-med').classList.toggle('active', summary.currentRisk === 'MEDIO');
-  document.getElementById('seg-high').classList.toggle('active', summary.currentRisk === 'ALTO');
-  
-  // Gauge fill (SVG)
-  const offset = 628.3 - (orbPct / 100 * 628.3);
-  document.getElementById('gauge-fill').style.strokeDashoffset = offset;
 
-  // Alerts
+  const latest = readings[0] || {};
+
+  /* ── Hero chips ── */
+  const t1 = latest.temp1 ?? latest.avgTemp ?? null;
+  const t2 = latest.temp2 ?? latest.avgTemp ?? null;
+  el('hero-temp1').textContent = t1 !== null ? `${t1.toFixed(1)}°C` : '--°C';
+  el('hero-temp2').textContent = t2 !== null ? `${t2.toFixed(1)}°C` : '--°C';
+  el('hero-hum').textContent   = `${summary.averageHumidity.toFixed(1)}%`;
+  el('hero-date').textContent  = today();
+
+  /* ── Risk Orb ── */
+  const pctMap = { ALTO: 85, MEDIO: 50, BAIXO: 18 };
+  const orbPct = pctMap[currentRisk] ?? 18;
+  el('orb-pct').textContent = `${orbPct}%`;
+  el('orb-lvl').textContent = `RISCO ${currentRisk}`;
+  el('orb-tag').textContent = summary.riskTrend === 'Piorando' ? 'Risco em subida ↑' : summary.riskTrend === 'Melhorando' ? 'A melhorar ↓' : 'Condições estáveis';
+  el('risk-caption').textContent = summary.stagnationMsg
+    ? `⚠ ${summary.stagnationMsg.slice(0, 80)}...`
+    : 'A monitorar condições ambientais em tempo real...';
+
+  const orb = el('risk-orb');
+  orb.className = `risk-orb risk-${currentRisk === 'ALTO' ? 'high' : currentRisk === 'MEDIO' ? 'med' : 'low'}`;
+
+  /* SVG gauge */
+  const offset = 628.3 - (orbPct / 100 * 628.3);
+  el('gauge-fill').style.strokeDashoffset = offset;
+
+  /* ── Dashboard Cards ── */
+  // IRM state card
+  const envVal = el('sv-env');
+  if (summary.stagnationMsg) {
+    envVal.textContent = 'Criadouro Detectado';
+    envVal.style.color = 'var(--red)';
+  } else {
+    const labels = { ALTO: 'Risco Elevado', MEDIO: 'Atenção', BAIXO: 'Seguro' };
+    envVal.textContent = labels[currentRisk] || 'Seguro';
+    envVal.style.color = currentRisk === 'ALTO' ? 'var(--red)' : currentRisk === 'MEDIO' ? 'var(--yellow)' : 'var(--green)';
+  }
+
+  setTrend('tr-env', summary.riskTrend === 'Piorando' ? 'Subindo' : summary.riskTrend === 'Melhorando' ? 'Descendo' : 'Estável');
+
+  // Condition meter
+  el('seg-low').classList.toggle('active',  currentRisk === 'BAIXO');
+  el('seg-med').classList.toggle('active',  currentRisk === 'MEDIO');
+  el('seg-high').classList.toggle('active', currentRisk === 'ALTO');
+
+  // Stagnation chips
+  renderStagnation('stag-chip-tx1', 'stag-val-tx1', summary.tx1Stagnation);
+  renderStagnation('stag-chip-tx2', 'stag-val-tx2', summary.tx2Stagnation);
+
+  // Temperature TX1
+  if (t1 !== null) {
+    el('sv-temp1').textContent = `${t1.toFixed(1)}°C`;
+    el('bf-temp1').style.width = `${Math.min(100, ((t1 - 10) / 40) * 100)}%`;
+  }
+  setTrend('tr-temp', summary.temperatureTrend);
+
+  // Temperature TX2
+  if (t2 !== null) {
+    el('sv-temp2').textContent = `${t2.toFixed(1)}°C`;
+    el('bf-temp2').style.width = `${Math.min(100, ((t2 - 10) / 40) * 100)}%`;
+  }
+  setTrend('tr-temp2', summary.temperatureTrend);
+
+  // Humidity
+  el('sv-hum').textContent = `${summary.averageHumidity.toFixed(1)}%`;
+  el('bf-hum').style.width = `${Math.min(100, summary.averageHumidity)}%`;
+  setTrend('tr-hum', summary.humidityTrend);
+
+  // Water presence
+  const r1 = latest.rain1;
+  const r2 = latest.rain2;
+  const WATER_THRESH = 2000;
+  const w1 = r1 !== undefined ? r1 < WATER_THRESH : null;
+  const w2 = r2 !== undefined ? r2 < WATER_THRESH : null;
+  let waterText = 'Sem dados';
+  let waterColor = 'var(--text2)';
+  if (w1 !== null || w2 !== null) {
+    const hasWater = (w1 === true) || (w2 === true);
+    waterText = hasWater
+      ? `Detectada${w1 && w2 ? ' (TX1 e TX2)' : w1 ? ' (TX1)' : ' (TX2)'}`
+      : 'Não detectada';
+    waterColor = hasWater ? 'var(--blue)' : 'var(--green)';
+  }
+  el('sv-water').textContent = waterText;
+  el('sv-water').style.color = waterColor;
+  el('sc-water-sub').textContent = (r1 !== undefined && r2 !== undefined)
+    ? `TX1: ${r1} / TX2: ${r2}`
+    : 'Aguardando leituras';
+
+  /* ── Alerts ── */
   renderAlerts(data.alerts);
-  
-  // Recommendations
+
+  /* ── Recommendations ── */
   renderRecommendations(currentRisk);
-  
-  // Chart
-  renderChart(data.chartData);
+
+  /* ── Charts ── */
+  renderRiskChart(chartData);
+  renderTempChart(chartData, readings);
+  el('ch-cur-risk').textContent = `RISCO ${currentRisk}`;
+  el('ch-cur-temp').textContent = t1 !== null ? `${t1.toFixed(1)}°C` : '--°C';
+}
+
+/* ── Stagnation chip helper ── */
+function renderStagnation(chipId, valId, count) {
+  const chip = el(chipId);
+  const valEl = el(valId);
+  if (!chip || !valEl) return;
+
+  if (!count || count < 2) {
+    chip.classList.remove('active-water');
+    valEl.className = 'stag-val';
+    valEl.textContent = 'Nenhuma';
+    return;
+  }
+  const mins = Math.round((count - 1) * 30 / 60 * 10) / 10;
+  chip.classList.add('active-water');
+  valEl.className = 'stag-val has-water';
+  valEl.textContent = mins >= 1 ? `${mins.toFixed(0)} min` : `${(count - 1) * 30}s`;
+}
+
+/* ── Trend badge helper ── */
+function setTrend(id, trend) {
+  const el2 = el(id);
+  if (!el2) return;
+  const map = { Subindo: 'up', Descendo: 'down', Piorando: 'up', Melhorando: 'down' };
+  const cls = map[trend] || 'stable';
+  el2.textContent = trend || '—';
+  el2.className = `sc-trend ${cls}`;
+}
+
+/* ── Alert icons ── */
+function alertIcon(type, severity) {
+  if (type.startsWith('STAGNATION'))
+    return `<svg class="al-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 C8 7 4 11 4 14a8 8 0 0016 0C20 11 16 7 12 2z"/></svg>`;
+  if (severity === 'danger')
+    return `<svg class="al-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+  return `<svg class="al-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
 }
 
 function renderAlerts(alerts) {
-  const container = document.getElementById('alerts-list');
-  const empty = document.getElementById('alerts-empty');
-  
-  // For citizens, we only show risk-based alerts, not sensor technical alerts
-  const filtered = alerts.filter(a => a.type === 'HIGH_RISK' || a.type === 'MEDIUM_RISK');
-  
+  const container = el('alerts-list');
+  const empty     = el('alerts-empty');
+  if (!container) return;
+
+  // Show stagnation + risk alerts (exclude sensor-technical-only types)
+  const filtered = alerts.filter(a =>
+    a.type === 'HIGH_RISK' ||
+    a.type === 'MEDIUM_RISK' ||
+    a.type.startsWith('STAGNATION_')
+  );
+
+  // Badge config
+  const badgeLabel = { info: 'AVISO', warn: 'ATENÇÃO', danger: 'ALTA PRIORIDADE' };
+
   if (filtered.length === 0) {
     empty.style.display = 'flex';
-    // Remove existing items if any
-    const existingItems = container.querySelectorAll('.alert-item');
-    existingItems.forEach(item => item.remove());
+    container.querySelectorAll('.alert-item').forEach(i => i.remove());
+    el('notif-dot').style.display = 'none';
     return;
   }
-  
+
   empty.style.display = 'none';
+  el('notif-dot').style.display = 'block';
+
   const html = filtered.map(a => `
     <article class="alert-item sev-${a.severity}">
-      <div class="al-icon">${a.severity === 'danger' ? '🚨' : '⚠️'}</div>
+      <div class="al-icon sev-${a.severity}">${alertIcon(a.type, a.severity)}</div>
       <div class="al-body">
         <div class="al-title">${a.title}</div>
         <div class="al-msg">${a.message}</div>
         <div class="al-foot">
-          <span class="al-time">${new Date(a.timestamp * 1000).toLocaleTimeString()}</span>
-          <span class="al-badge">${a.severity === 'danger' ? 'ALTA PRIORIDADE' : 'AVISO'}</span>
+          <span class="al-time">${new Date(a.timestamp * 1000).toLocaleTimeString('pt-PT')}</span>
+          <span class="al-badge sev-${a.severity}">${badgeLabel[a.severity] || 'AVISO'}</span>
         </div>
       </div>
     </article>
   `).join('');
-  
-  // Clear old and insert new
-  const existingItems = container.querySelectorAll('.alert-item');
-  existingItems.forEach(item => item.remove());
+
+  container.querySelectorAll('.alert-item').forEach(i => i.remove());
   container.insertAdjacentHTML('beforeend', html);
 }
 
 function renderRecommendations(risk) {
-  const container = document.getElementById('rec-grid');
+  const container = el('rec-grid');
   const recs = RECOMMENDATIONS[risk] || RECOMMENDATIONS.BAIXO;
-  
   container.innerHTML = recs.map(r => `
     <article class="rec-card">
-      <div class="rec-icon">${r.icon}</div>
+      <div class="rec-icon-wrap ${r.level === 'danger' ? 'danger' : r.level === 'warn' ? 'warn' : ''}">
+        ${ICON[r.iconKey] || ''}
+      </div>
       <div class="rec-body">
-        <div class="rec-title">${r.title}</div>
+        <div class="rec-title ${r.level === 'danger' ? 'danger' : r.level === 'warn' ? 'warn' : ''}">${r.title}</div>
         <div class="rec-desc">${r.desc}</div>
       </div>
     </article>
   `).join('');
 }
 
-function renderChart(chartData) {
-  const ctx = document.getElementById('ch-risk').getContext('2d');
-  
+/* ── Charts ── */
+const CHART_DEFAULTS = {
+  responsive: true,
+  maintainAspectRatio: false,
+  interaction: { mode: 'index', intersect: false },
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      backgroundColor: 'rgba(13,20,37,0.95)',
+      borderColor: 'rgba(0,232,198,0.2)',
+      borderWidth: 1,
+      titleColor: '#e8f4f2',
+      bodyColor: '#94a3b8',
+      padding: 12,
+    }
+  },
+  scales: {
+    x: {
+      ticks: { color: '#475569', maxRotation: 0, font: { size: 11 } },
+      grid: { color: 'rgba(255,255,255,0.04)' }
+    },
+    y: {
+      ticks: { color: '#475569', font: { size: 11 } },
+      grid: { color: 'rgba(255,255,255,0.04)' }
+    }
+  }
+};
+
+function renderRiskChart(chartData) {
+  const ctx = el('ch-risk').getContext('2d');
   if (riskChart) {
     riskChart.data.labels = chartData.risk.map(d => d.timestamp);
     riskChart.data.datasets[0].data = chartData.risk.map(d => d.value);
-    riskChart.update();
+    riskChart.update('none');
     return;
   }
-  
   riskChart = new Chart(ctx, {
     type: 'line',
     data: {
@@ -171,34 +307,88 @@ function renderChart(chartData) {
       datasets: [{
         label: 'Nível de Risco',
         data: chartData.risk.map(d => d.value),
-        borderColor: '#0d9488',
-        backgroundColor: 'rgba(13, 148, 136, 0.1)',
-        borderWidth: 3,
-        pointRadius: 4,
-        pointBackgroundColor: '#0d9488',
+        borderColor: '#00e8c6',
+        backgroundColor: 'rgba(0,232,198,0.06)',
+        borderWidth: 2.5,
+        pointRadius: 3,
+        pointBackgroundColor: '#00e8c6',
         tension: 0.4,
         fill: true
       }]
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
+      ...CHART_DEFAULTS,
       scales: {
+        ...CHART_DEFAULTS.scales,
         y: {
           min: 1, max: 3,
           ticks: {
             stepSize: 1,
-            callback: function(value) {
-              return ['BAIXO', 'MÉDIO', 'ALTO'][value - 1];
-            },
-            color: '#64748b'
+            callback: v => ['BAIXO', 'MÉDIO', 'ALTO'][v - 1],
+            color: '#475569', font: { size: 11 }
           },
-          grid: { color: '#f1f5f9' }
+          grid: { color: 'rgba(255,255,255,0.04)' }
+        }
+      }
+    }
+  });
+}
+
+function renderTempChart(chartData, readings) {
+  const ctx = el('ch-temp').getContext('2d');
+  const chrono = [...readings].reverse();
+
+  if (tempChart) {
+    tempChart.data.labels = chrono.map(r => new Date(r.timestamp * 1000).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }));
+    tempChart.data.datasets[0].data = chrono.map(r => r.temp1 ?? r.avgTemp ?? null);
+    tempChart.data.datasets[1].data = chrono.map(r => r.temp2 ?? r.avgTemp ?? null);
+    tempChart.update('none');
+    return;
+  }
+  tempChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: chrono.map(r => new Date(r.timestamp * 1000).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })),
+      datasets: [
+        {
+          label: 'TX1 Temp',
+          data: chrono.map(r => r.temp1 ?? r.avgTemp ?? null),
+          borderColor: '#00e8c6',
+          backgroundColor: 'rgba(0,232,198,0.06)',
+          borderWidth: 2,
+          pointRadius: 2.5,
+          tension: 0.4,
+          fill: false
         },
-        x: {
-          ticks: { color: '#64748b', maxRotation: 0 },
-          grid: { display: false }
+        {
+          label: 'TX2 Temp',
+          data: chrono.map(r => r.temp2 ?? r.avgTemp ?? null),
+          borderColor: '#06b6d4',
+          backgroundColor: 'rgba(6,182,212,0.06)',
+          borderWidth: 2,
+          pointRadius: 2.5,
+          tension: 0.4,
+          fill: false
+        }
+      ]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      plugins: {
+        ...CHART_DEFAULTS.plugins,
+        legend: {
+          display: true,
+          labels: { color: '#94a3b8', font: { size: 11 }, boxWidth: 14, padding: 16 }
+        }
+      },
+      scales: {
+        ...CHART_DEFAULTS.scales,
+        y: {
+          ticks: {
+            callback: v => `${v}°C`,
+            color: '#475569', font: { size: 11 }
+          },
+          grid: { color: 'rgba(255,255,255,0.04)' }
         }
       }
     }
@@ -207,58 +397,63 @@ function renderChart(chartData) {
 
 /* ── INTERACTIVITY ── */
 window.toggleMenu = () => {
-  const drawer = document.getElementById('drawer');
-  const overlay = document.getElementById('drawer-overlay');
-  drawer.classList.toggle('open');
-  overlay.classList.toggle('open');
+  const drawer  = el('drawer');
+  const overlay = el('drawer-overlay');
+  const btn     = el('menu-toggle');
+  const isOpen  = drawer.classList.toggle('open');
+  overlay.classList.toggle('open', isOpen);
+  btn.setAttribute('aria-expanded', isOpen);
 };
 
 window.closeDrawer = () => {
-  document.getElementById('drawer').classList.remove('open');
-  document.getElementById('drawer-overlay').classList.remove('open');
+  el('drawer').classList.remove('open');
+  el('drawer-overlay').classList.remove('open');
+  el('menu-toggle').setAttribute('aria-expanded', 'false');
 };
 
-document.getElementById('menu-toggle').addEventListener('click', toggleMenu);
-document.getElementById('drawer-close').addEventListener('click', closeDrawer);
+el('menu-toggle').addEventListener('click', toggleMenu);
+el('drawer-close').addEventListener('click', closeDrawer);
+el('notif-btn').addEventListener('click', () => {
+  document.querySelector('#alerts').scrollIntoView({ behavior: 'smooth' });
+});
 
-function handleUserInactivity() {
-    const dot = document.getElementById('conn-dot');
-    const text = document.getElementById('conn-text');
-    dot.className = 'conn-dot offline';
-    text.textContent = 'Inactivo (sem dados > 1 min)';
+/* ── INACTIVITY ── */
+function handleInactivity() {
+  el('conn-dot').className  = 'conn-dot offline';
+  el('conn-text').textContent = 'Inactivo — sem dados > 1 min';
+  el('drawer-conn-dot').className = 'conn-dot offline';
 }
 
-function resetUserInactivityTimer() {
-    clearTimeout(inactivityUserTimer);
-    inactivityUserTimer = setTimeout(handleUserInactivity, 60000);
+function resetInactivity() {
+  clearTimeout(inactivityTimer);
+  inactivityTimer = setTimeout(handleInactivity, 60000);
 }
 
 /* ── BOOT ── */
 function init() {
   initPreloader();
-  
-  // Start Clock
+
+  // Clock
   setInterval(() => {
-    document.getElementById('nav-clock').textContent = now();
-    document.getElementById('nav-date').textContent = today();
+    el('nav-clock').textContent = nowTime();
+    el('nav-date').textContent  = today();
   }, 1000);
-  
+
   // VigiMat Integration
   VigiMat.init();
   VigiMat.firebase.onReadingsUpdate((raw) => {
     if (raw.length > 0) {
-      resetUserInactivityTimer();
+      resetInactivity();
       const data = VigiMat.processData(raw);
       updateUI(data);
-      
-      const badge = document.getElementById('conn-badge');
-      const dot = document.getElementById('conn-dot');
-      const text = document.getElementById('conn-text');
-      dot.className = 'conn-dot online';
-      text.textContent = 'Actualizado agora';
+
+      el('conn-dot').className  = 'conn-dot online';
+      el('conn-text').textContent = 'Actualizado agora';
+      el('drawer-conn-dot').className = 'conn-dot online';
     }
   });
-  resetUserInactivityTimer();
+
+  resetInactivity();
 }
 
 document.addEventListener('DOMContentLoaded', init);

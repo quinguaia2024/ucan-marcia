@@ -3,9 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PRO-VigiMAT — Vigilância Ambiental Comunitária</title>
+  <meta name="description" content="Portal comunitário de vigilância ambiental e prevenção da malária — PRO-VigiMAT" />
+  <title>PRO-VigiMAT — Portal Comunitário</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,400&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -20,15 +21,15 @@
       <div class="pl-ring pl-ring-2"></div>
       <div class="pl-ring pl-ring-3"></div>
       <div class="pl-core">
-        <svg viewBox="0 0 40 40" fill="none">
-          <path d="M20 4C11.2 4 4 11.2 4 20C4 28.8 11.2 36 20 36" stroke="#0d9488" stroke-width="1.5" stroke-linecap="round"/>
-          <path d="M20 4C28.8 4 36 11.2 36 20C36 28.8 28.8 36 20 36" stroke="#0d9488" stroke-width="1.5" stroke-linecap="round" opacity=".4"/>
-          <circle cx="20" cy="20" r="5" fill="#0d9488"/>
+        <svg viewBox="0 0 40 40" fill="none" style="width:28px;height:28px">
+          <path d="M20 4C11.2 4 4 11.2 4 20C4 28.8 11.2 36 20 36" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M20 4C28.8 4 36 11.2 36 20C36 28.8 28.8 36 20 36" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" opacity=".4"/>
+          <circle cx="20" cy="20" r="4.5" fill="var(--accent)"/>
         </svg>
       </div>
     </div>
     <div class="pl-brand">PRO-VigiMAT</div>
-    <p class="pl-status" id="pl-status">Inicializando sensores...</p>
+    <p class="pl-status" id="pl-status">A ligar ao sistema...</p>
     <div class="pl-bar"><div class="pl-fill"></div></div>
   </div>
 </div>
@@ -51,11 +52,11 @@
   <div class="nav-inner">
     <a class="nav-logo" href="#hero" aria-label="PRO-VigiMAT início">
       <div class="logo-mark">
-        <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
-          <circle cx="16" cy="16" r="13" stroke="#00e8c6" stroke-width="1.5"/>
-          <circle cx="16" cy="16" r="8"  stroke="#00e8c6" stroke-width="1" opacity=".5"/>
-          <path d="M16 10 C11 10 8 13 8 16 C8 19 11 22 16 22 C21 22 24 19 24 16 C24 13 21 10 16 10Z" fill="#00e8c6" opacity=".2"/>
-          <circle cx="16" cy="16" r="3.5" fill="#00e8c6"/>
+        <svg viewBox="0 0 32 32" fill="none" aria-hidden="true" style="width:30px;height:30px">
+          <circle cx="16" cy="16" r="13" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="4 3"/>
+          <circle cx="16" cy="16" r="8"  stroke="var(--accent)" stroke-width="1" opacity=".5"/>
+          <path d="M16 10 C11 10 8 13 8 16 C8 19 11 22 16 22 C21 22 24 19 24 16 C24 13 21 10 16 10Z" fill="var(--accent)" opacity=".2"/>
+          <circle cx="16" cy="16" r="3.5" fill="var(--accent)"/>
         </svg>
       </div>
       <div>
@@ -72,7 +73,7 @@
     <div class="nav-actions">
       <div class="conn-badge" id="conn-badge">
         <span class="conn-dot" id="conn-dot"></span>
-        <span id="conn-text">Ligando...</span>
+        <span id="conn-text">A ligar...</span>
       </div>
       <button class="notif-btn" id="notif-btn" aria-label="Ver alertas">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -96,14 +97,29 @@
       <button class="drawer-close" id="drawer-close" aria-label="Fechar menu">✕</button>
     </div>
     <nav class="drawer-nav">
-      <a href="#hero"            class="drawer-link" onclick="closeDrawer()"><svg class="drawer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> Início</a>
-      <a href="#dashboard"       class="drawer-link" onclick="closeDrawer()"><svg class="drawer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg> Painel</a>
-      <a href="#alerts"          class="drawer-link" onclick="closeDrawer()"><svg class="drawer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg> Alertas</a>
-      <a href="#recommendations" class="drawer-link" onclick="closeDrawer()"><svg class="drawer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7z"/></svg> Recomendações</a>
-      <a href="#history"         class="drawer-link" onclick="closeDrawer()"><svg class="drawer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Histórico</a>
+      <a href="#hero"            class="drawer-link" onclick="closeDrawer()">
+        <svg class="drawer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Início
+      </a>
+      <a href="#dashboard"       class="drawer-link" onclick="closeDrawer()">
+        <svg class="drawer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Painel
+      </a>
+      <a href="#alerts"          class="drawer-link" onclick="closeDrawer()">
+        <svg class="drawer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        Alertas
+      </a>
+      <a href="#recommendations" class="drawer-link" onclick="closeDrawer()">
+        <svg class="drawer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7z"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>
+        Recomendações
+      </a>
+      <a href="#history"         class="drawer-link" onclick="closeDrawer()">
+        <svg class="drawer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Histórico
+      </a>
     </nav>
     <div class="drawer-footer">
-      <span class="conn-dot" style="margin-right:.5rem"></span>
+      <span class="conn-dot" style="margin-right:.5rem" id="drawer-conn-dot"></span>
       Sistema em funcionamento
     </div>
   </div>
@@ -115,11 +131,11 @@
 ════════════════════════════════════════════ -->
 <main id="main">
 
-  <!-- ── HERO ───────────────────────────── -->
+  <!-- ── HERO ─────────────────────────────── -->
   <section id="hero" aria-label="Estado de risco principal">
     <div class="hero-inner">
 
-      <!-- LEFT: copy + summary -->
+      <!-- LEFT -->
       <div class="hero-left">
         <div class="hero-badges">
           <span class="live-badge">
@@ -135,43 +151,61 @@
         </h1>
 
         <p class="hero-desc" id="hero-desc">
-          Monitoramento inteligente de risco ambiental na tua zona 24h por dia.
+          Monitoramento inteligente de condições ambientais em tempo real na tua zona — 24h por dia.
         </p>
 
+        <!-- 4 chips: temp TX1, temp TX2, humidade, água -->
         <div class="hero-env-row">
           <div class="env-chip">
-            <span class="env-icon"><svg class="chip-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg></span>
+            <span class="env-icon">
+              <svg class="chip-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>
+            </span>
             <div class="env-info">
-              <span class="env-lbl">Temperatura Média</span>
-              <span class="env-val" id="hero-temp">--°C</span>
+              <span class="env-lbl">Temp. TX1</span>
+              <span class="env-val" id="hero-temp1">--°C</span>
             </div>
           </div>
           <div class="env-chip">
-            <span class="env-icon"><svg class="chip-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg></span>
+            <span class="env-icon">
+              <svg class="chip-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>
+            </span>
             <div class="env-info">
-              <span class="env-lbl">Humidade Média</span>
+              <span class="env-lbl">Temp. TX2</span>
+              <span class="env-val" id="hero-temp2">--°C</span>
+            </div>
+          </div>
+          <div class="env-chip">
+            <span class="env-icon">
+              <svg class="chip-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+            </span>
+            <div class="env-info">
+              <span class="env-lbl">Humidade</span>
               <span class="env-val" id="hero-hum">--%</span>
             </div>
           </div>
         </div>
 
         <div class="hero-ctas">
-          <a href="#alerts"          class="cta-primary">Ver Alertas</a>
-          <a href="#recommendations" class="cta-ghost">Recomendações</a>
+          <a href="#alerts"          class="cta-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+            Ver Alertas
+          </a>
+          <a href="#recommendations" class="cta-ghost">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7z"/></svg>
+            Recomendações
+          </a>
         </div>
       </div>
 
       <!-- RIGHT: animated risk orb -->
       <div class="hero-right">
         <div class="risk-wrap">
-          <!-- outer pulsing rings -->
           <div class="ring-set" id="ring-set">
             <div class="orb-ring r1"></div>
             <div class="orb-ring r2"></div>
             <div class="orb-ring r3"></div>
           </div>
 
-          <!-- SVG gauge -->
           <div class="risk-orb" id="risk-orb" aria-live="polite" aria-label="Nível de risco de malária">
             <svg class="risk-svg" viewBox="0 0 240 240" role="img" aria-hidden="true">
               <defs>
@@ -180,15 +214,20 @@
                   <stop id="grad-stop2" offset="100%" stop-color="#0d9488"/>
                 </linearGradient>
               </defs>
-              <circle class="gauge-track" cx="120" cy="120" r="100" fill="none" stroke-width="12" stroke-dasharray="628.3" stroke-dashoffset="0" transform="rotate(-90 120 120)"/>
-              <circle class="gauge-fill" id="gauge-fill" cx="120" cy="120" r="100" fill="none" stroke="url(#riskGrad)" stroke-width="12" stroke-linecap="round" stroke-dasharray="628.3" stroke-dashoffset="628.3" transform="rotate(-90 120 120)"/>
+              <circle class="gauge-track" cx="120" cy="120" r="100" fill="none" stroke-dasharray="628.3" stroke-dashoffset="0" transform="rotate(-90 120 120)"/>
+              <circle class="gauge-fill" id="gauge-fill" cx="120" cy="120" r="100" fill="none" stroke="url(#riskGrad)" stroke-linecap="round" stroke-dasharray="628.3" stroke-dashoffset="628.3" transform="rotate(-90 120 120)"/>
             </svg>
 
             <div class="orb-inner">
-              <div class="orb-emoji" id="orb-emoji"><svg class="orb-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+              <div class="orb-emoji" id="orb-emoji">
+                <svg class="orb-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+              </div>
               <div class="orb-pct"  id="orb-pct">--</div>
               <div class="orb-lvl"  id="orb-lvl">CALCULANDO</div>
-              <div class="orb-tag"  id="orb-tag">Aguardando dados...</div>
+              <div class="orb-tag"  id="orb-tag">A aguardar dados...</div>
             </div>
           </div>
 
@@ -201,24 +240,32 @@
     </div>
   </section>
 
-  <!-- ── DASHBOARD CARDS ────────────────── -->
+  <div class="section-divider"></div>
+
+  <!-- ── DASHBOARD CARDS ──────────────────── -->
   <section id="dashboard" aria-label="Painel de dados ambientais">
     <div class="sec-inner">
       <header class="sec-hd">
         <h2 class="sec-title">Painel de Risco Comunitário</h2>
-        <p class="sec-sub">Informações baseadas no Índice de Risco de Malária (IRM)</p>
+        <p class="sec-sub">Dados em tempo real dos dois pontos de monitoramento — TX1 e TX2</p>
       </header>
 
       <div class="dash-grid">
-        <!-- IRM Status Card -->
-        <article class="stat-card" id="sc-env" style="grid-column: span 2;">
+
+        <!-- Estado Ambiental (IRM) — wide -->
+        <article class="stat-card span-2" id="sc-env">
           <div class="sc-top">
-            <span class="sc-icon" id="env-icon" aria-hidden="true"><svg class="stat-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 3.5 1.85 9a7 7 0 0 1-9.85 9z"/><path d="M11 20v-8g"/></svg></span>
-            <span class="sc-trend" id="tr-env">—</span>
+            <span class="sc-icon" id="env-icon" aria-hidden="true">
+              <svg class="stat-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 3.5 1.85 9a7 7 0 0 1-9.85 9z"/>
+                <path d="M11 20v-8"/>
+              </svg>
+            </span>
+            <span class="sc-trend stable" id="tr-env">—</span>
           </div>
           <div class="sc-value" id="sv-env">Analisando</div>
-          <div class="sc-label">Estado de Alerta Ambiental</div>
-          <div class="cond-meter">
+          <div class="sc-label">Estado de Alerta Ambiental — IRM Global</div>
+          <div class="cond-meter" style="margin-top:1rem">
             <div class="cond-seg seg-low"  id="seg-low"></div>
             <div class="cond-seg seg-med"  id="seg-med"></div>
             <div class="cond-seg seg-high" id="seg-high"></div>
@@ -226,46 +273,103 @@
           <div class="cond-labels">
             <span>Seguro</span><span>Atenção</span><span>Risco Elevado</span>
           </div>
-        </article>
-
-        <!-- Temperature Average -->
-        <article class="stat-card" id="sc-temp">
-          <div class="sc-top">
-            <span class="sc-icon" aria-hidden="true"><svg class="stat-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg></span>
-            <span class="sc-trend" id="tr-temp">—</span>
+          <!-- Water stagnation per zone -->
+          <div class="stag-row">
+            <div class="stag-chip" id="stag-chip-tx1">
+              <div class="stag-lbl">Água parada — TX1</div>
+              <div class="stag-val" id="stag-val-tx1">—</div>
+            </div>
+            <div class="stag-chip" id="stag-chip-tx2">
+              <div class="stag-lbl">Água parada — TX2</div>
+              <div class="stag-val" id="stag-val-tx2">—</div>
+            </div>
           </div>
-          <div class="sc-value" id="sv-temp">--°C</div>
-          <div class="sc-label">Temperatura Média</div>
-          <div class="sc-bar-track"><div class="sc-bar-fill" id="bf-temp" style="width:0%"></div></div>
         </article>
 
-        <!-- Humidity Average -->
+        <!-- Temperatura TX1 -->
+        <article class="stat-card" id="sc-temp1">
+          <div class="sc-top">
+            <span class="sc-icon">
+              <svg class="stat-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
+              </svg>
+            </span>
+            <span class="sc-trend stable" id="tr-temp">—</span>
+          </div>
+          <div class="sc-value" id="sv-temp1">--°C</div>
+          <div class="sc-label">Temperatura — TX1</div>
+          <div class="sc-sub" id="sc-temp1-sub">Zona 1</div>
+          <div class="sc-bar-track"><div class="sc-bar-fill" id="bf-temp1" style="width:0%"></div></div>
+        </article>
+
+        <!-- Temperatura TX2 -->
+        <article class="stat-card" id="sc-temp2">
+          <div class="sc-top">
+            <span class="sc-icon">
+              <svg class="stat-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
+              </svg>
+            </span>
+            <span class="sc-trend stable" id="tr-temp2">—</span>
+          </div>
+          <div class="sc-value" id="sv-temp2">--°C</div>
+          <div class="sc-label">Temperatura — TX2</div>
+          <div class="sc-sub" id="sc-temp2-sub">Zona 2</div>
+          <div class="sc-bar-track"><div class="sc-bar-fill" id="bf-temp2" style="width:0%"></div></div>
+        </article>
+
+        <!-- Humidade -->
         <article class="stat-card" id="sc-hum">
           <div class="sc-top">
-            <span class="sc-icon" aria-hidden="true"><svg class="stat-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg></span>
-            <span class="sc-trend" id="tr-hum">—</span>
+            <span class="sc-icon">
+              <svg class="stat-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>
+              </svg>
+            </span>
+            <span class="sc-trend stable" id="tr-hum">—</span>
           </div>
           <div class="sc-value" id="sv-hum">--%</div>
           <div class="sc-label">Humidade Média</div>
+          <div class="sc-sub" id="sc-hum-sub">Média TX1 + TX2</div>
           <div class="sc-bar-track"><div class="sc-bar-fill" id="bf-hum" style="width:0%"></div></div>
         </article>
+
+        <!-- Presença de Água -->
+        <article class="stat-card" id="sc-water">
+          <div class="sc-top">
+            <span class="sc-icon" style="background:rgba(6,182,212,.1);border-color:rgba(6,182,212,.2)">
+              <svg class="stat-svg" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2">
+                <path d="M12 2 C8 7 4 11 4 14a8 8 0 0016 0C20 11 16 7 12 2z"/>
+              </svg>
+            </span>
+            <span class="sc-trend stable" id="tr-water">—</span>
+          </div>
+          <div class="sc-value" id="sv-water" style="font-size:1.8rem">Sem dados</div>
+          <div class="sc-label">Presença de Água</div>
+          <div class="sc-sub" id="sc-water-sub">TX1 e TX2</div>
+        </article>
+
       </div>
     </div>
   </section>
+
+  <div class="section-divider"></div>
 
   <!-- ── ALERTS ─────────────────────────── -->
   <section id="alerts" aria-label="Alertas comunitários" aria-live="polite">
     <div class="sec-inner">
       <header class="sec-hd">
-        <div>
-          <h2 class="sec-title">Alertas Públicos</h2>
-          <p class="sec-sub">Avisos importantes para a prevenção da malária</p>
-        </div>
+        <h2 class="sec-title">Alertas Públicos</h2>
+        <p class="sec-sub">Avisos importantes para a prevenção da malária na tua zona</p>
       </header>
 
       <div class="alerts-list" id="alerts-list">
         <div class="alerts-empty" id="alerts-empty">
-          <span class="ae-icon"><svg class="empty-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
+          <span class="ae-icon">
+            <svg class="empty-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+          </span>
           <p class="ae-title">Tudo sob controlo</p>
           <p class="ae-sub">Sem alertas críticos de momento. Continue as práticas de prevenção habituais.</p>
         </div>
@@ -273,12 +377,14 @@
     </div>
   </section>
 
+  <div class="section-divider"></div>
+
   <!-- ── RECOMMENDATIONS ───────────────── -->
   <section id="recommendations" aria-label="Recomendações de prevenção">
     <div class="sec-inner">
       <header class="sec-hd">
-        <h2 class="sec-title">Recomendações de Proteção</h2>
-        <p class="sec-sub">Baseadas no nível de risco actual do sistema</p>
+        <h2 class="sec-title">Recomendações de Protecção</h2>
+        <p class="sec-sub">Adaptadas ao nível de risco actual detectado pelo sistema</p>
       </header>
       <div class="rec-grid" id="rec-grid" aria-live="polite">
         <!-- Dynamic content -->
@@ -286,22 +392,47 @@
     </div>
   </section>
 
+  <div class="section-divider"></div>
+
   <!-- ── HISTORY CHARTS ────────────────── -->
   <section id="history" aria-label="Histórico de risco">
     <div class="sec-inner">
       <header class="sec-hd">
         <h2 class="sec-title">Evolução do Risco</h2>
-        <p class="sec-sub">Como o Índice de Risco tem variado recentemente</p>
+        <p class="sec-sub">Histórico das condições ambientais e nível de risco ao longo do tempo</p>
       </header>
 
-      <div class="charts-grid" style="grid-template-columns: 1fr;">
+      <div style="display:grid;grid-template-columns:1fr;gap:1.25rem">
+        <!-- Risk chart -->
         <div class="chart-card">
           <div class="ch-head">
-            <span class="ch-title"><svg class="inline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Histórico de Risco</span>
+            <span class="ch-title">
+              <svg class="inline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              Índice de Risco — Evolução
+            </span>
             <span class="ch-cur" id="ch-cur-risk">--</span>
           </div>
           <div class="ch-body">
-            <canvas id="ch-risk" height="180" aria-label="Gráfico de risco de malária" role="img"></canvas>
+            <canvas id="ch-risk" aria-label="Gráfico de risco de malária" role="img"></canvas>
+          </div>
+        </div>
+
+        <!-- Temperature chart -->
+        <div class="chart-card">
+          <div class="ch-head">
+            <span class="ch-title">
+              <svg class="inline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
+              </svg>
+              Temperatura (TX1 / TX2) — Histórico
+            </span>
+            <span class="ch-cur" id="ch-cur-temp">--</span>
+          </div>
+          <div class="ch-body">
+            <canvas id="ch-temp" aria-label="Gráfico de temperatura" role="img"></canvas>
           </div>
         </div>
       </div>
@@ -318,10 +449,12 @@
     </div>
     <div class="foot-links">
       <a href="#hero">Início</a>
-      <a href="#dashboard">Risco</a>
+      <a href="#dashboard">Painel</a>
       <a href="#alerts">Alertas</a>
       <a href="#recommendations">Dicas</a>
+      <a href="#history">Histórico</a>
     </div>
+    <span class="foot-copy">© 2024 PRO-VigiMAT</span>
   </div>
 </footer>
 

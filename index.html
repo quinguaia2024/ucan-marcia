@@ -61,10 +61,7 @@
       <span>Dashboard</span>
       <span class="sb-live">LIVE</span>
     </a>
-    <a class="sb-item" data-sec="sensores" href="#">
-      <svg class="sb-icon" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 2l5 9H6l5-9z"/><circle cx="11" cy="17" r="3"/></svg>
-      <span>Sensores</span>
-    </a>
+
     <a class="sb-item" data-sec="historico" href="#">
       <svg class="sb-icon" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="2 11 6 11 9 19 13 3 16 11 20 11"/></svg>
       <span>Histórico</span>
@@ -384,55 +381,6 @@
       </div>
     </section>
 
-    <!-- ════ SENSORES ════ -->
-    <section class="sec" id="sec-sensores">
-      <div class="pg-head">
-        <div><h1 class="pg-title">Sensores</h1><p class="pg-sub">Estado actual dos pontos de monitoramento</p></div>
-      </div>
-      <div class="sensor-grid">
-        <div class="sensor-card">
-          <div class="sc-head"><span class="tx-badge">TX1</span><h3>Emissor 1 — Detalhe</h3></div>
-          <dl class="spec-dl">
-            <dt>Protocolo</dt><dd>LoRa 433 MHz</dd>
-            <dt>Sensor Temp.</dt><dd>DHT22</dd>
-            <dt>Sensor Água</dt><dd>FC-28 / Resistivo</dd>
-            <dt>Spread Factor</dt><dd>SF7 – SF12</dd>
-            <dt>Intervalo TX</dt><dd>30 s</dd>
-            <dt>Temperatura</dt><dd id="sc-t1-temp">--</dd>
-            <dt>Humidade</dt><dd id="sc-t1-hum">--</dd>
-            <dt>RSSI</dt><dd id="sc-t1-rssi">--</dd>
-            <dt>Estado</dt><dd id="sc-t1-state" class="online">Online</dd>
-          </dl>
-        </div>
-        <div class="sensor-card">
-          <div class="sc-head"><span class="tx-badge">TX2</span><h3>Emissor 2 — Detalhe</h3></div>
-          <dl class="spec-dl">
-            <dt>Protocolo</dt><dd>LoRa 433 MHz</dd>
-            <dt>Sensor Temp.</dt><dd>DHT22</dd>
-            <dt>Sensor Água</dt><dd>FC-28 / Resistivo</dd>
-            <dt>Spread Factor</dt><dd>SF7 – SF12</dd>
-            <dt>Intervalo TX</dt><dd>30 s</dd>
-            <dt>Temperatura</dt><dd id="sc-t2-temp">--</dd>
-            <dt>Humidade</dt><dd id="sc-t2-hum">--</dd>
-            <dt>RSSI</dt><dd id="sc-t2-rssi">--</dd>
-            <dt>Estado</dt><dd id="sc-t2-state" class="online">Online</dd>
-          </dl>
-        </div>
-        <div class="sensor-card">
-          <div class="sc-head"><span class="rx-badge">RX</span><h3>Receptor Central — Detalhe</h3></div>
-          <dl class="spec-dl">
-            <dt>Protocolo LoRa</dt><dd>RX Contínuo</dd>
-            <dt>Conectividade</dt><dd>Wi-Fi 802.11b/g/n</dd>
-            <dt>Processador</dt><dd>ESP32-S3</dd>
-            <dt>Frequência</dt><dd>433 MHz</dd>
-            <dt>Pacotes RX</dt><dd id="sc-rx-pkts">--</dd>
-            <dt>Erros CRC</dt><dd id="sc-rx-err">0</dd>
-            <dt>Uptime</dt><dd id="sc-rx-up">--</dd>
-            <dt>Estado</dt><dd class="online">Online</dd>
-          </dl>
-        </div>
-      </div>
-    </section>
 
     <!-- ════ HISTÓRICO ════ -->
     <section class="sec" id="sec-historico">
@@ -478,7 +426,7 @@
       <div class="pg-head">
         <div>
           <h1 class="pg-title">Testes de Comunicação</h1>
-          <p class="pg-sub">Verifique a qualidade da ligação entre sensores e receptor</p>
+          <p class="pg-sub">Taxa de Perda de Pacotes (TPP) por módulo — TX1 e TX2 avaliados individualmente</p>
         </div>
       </div>
 
@@ -491,9 +439,9 @@
         <div class="tbl-scroll">
           <table class="evt-table">
             <thead><tr>
-              <th>Hora</th><th>Teste</th><th>RSSI Médio</th><th>SNR</th><th>Perda de Pacotes</th><th>Estado</th>
+              <th>Hora</th><th>Módulo</th><th>Pkts Enviados</th><th>Pkts Recebidos</th><th>TPP (Perda)</th>
             </tr></thead>
-            <tbody id="test-log-tbody"><tr><td colspan="6" class="tbl-empty">Ainda não foram realizados testes.</td></tr></tbody>
+            <tbody id="test-log-tbody"><tr><td colspan="5" class="tbl-empty">Ainda não foram realizados testes.</td></tr></tbody>
           </table>
         </div>
       </div>
