@@ -25,8 +25,14 @@ const S = {
   hist: { lbl:[], t1:[], t2:[], hum:[], irm:[] },
   events: [], alerts: [],
   uptime: 0, crcErr: 0,
-  systemStatus: 'active',
+  systemStatus: 'inactive',
 };
+
+/* ── BOOT CONTROL STATE ── */
+window.startupPeriodElapsed = false;
+window.newReadingReceivedDuringStartup = false;
+window.lastVigiMatResult = null;
+window.initialLatestTimestamp = null;
 
 /* ── COMMUNICATION TEST STATE ── */
 // Each module has independent packet loss tracking per the academic methodology:
@@ -120,8 +126,20 @@ function initNav(){
    IRM CALCULATION
 ══════════════════════════════════════════════════ */
 function calcIRM(a,b){
-  const t = (a.t+b.t)/2, h=(a.h+b.h)/2;
-  const water = (a.w?1:0)+(b.w?1:0);
+  let t, h;
+  if (a.on && b.on) {
+    t = (a.t + b.t) / 2;
+    h = (a.h + b.h) / 2;
+  } else if (a.on) {
+    t = a.t;
+    h = a.h;
+  } else if (b.on) {
+    t = b.t;
+    h = b.h;
+  } else {
+    return 0;
+  }
+  const water = (a.on && a.w ? 1 : 0) + (b.on && b.w ? 1 : 0);
   /* Temperature score: optimal 25–35°C for Anopheles */
   let ts=0;
   if(t>=25&&t<=35)    ts=40*(1-Math.abs(t-30)/10);
@@ -129,8 +147,21 @@ function calcIRM(a,b){
   else                ts=Math.max(0,20-(25-t)*4);
   /* Humidity score */
   const hs=clamp((h-40)/60*35,0,35);
-  /* Water score */
-  const ws=water*12.5;
+
+  if (water === 0) {
+    return Math.round(clamp(ts + hs, 0, 30)); // Capped at 30 (Low risk) when no water is detected
+  }
+
+  /* Water score based on stagnation count */
+  let ws = 0;
+  if (a.on && a.w) {
+    const stag = a.stagnation || 0;
+    ws += Math.min(12.5, 5 + stag * 1.25);
+  }
+  if (b.on && b.w) {
+    const stag = b.stagnation || 0;
+    ws += Math.min(12.5, 5 + stag * 1.25);
+  }
   return Math.round(clamp(ts+hs+ws,0,100));
 }
 
@@ -172,7 +203,6 @@ function initFirebase() {
   VigiMat.init();
   VigiMat.firebase.onReadingsUpdate((rawReadings) => {
     if (rawReadings.length > 0) {
-      resetInactivityTimer();
       const result = VigiMat.processData(rawReadings);
       applyVigiMatToState(result);
       renderAll();
@@ -181,39 +211,74 @@ function initFirebase() {
 }
 
 function applyVigiMatToState(result) {
-  S.systemStatus = 'active';
+  window.lastVigiMatResult = result;
   const latest = result.readings[0] || {};
-  const isNewReading = latest.timestamp && latest.timestamp !== S.lastTimestamp;
-  S.lastTimestamp = latest.timestamp;
+  
+  if (window.initialLatestTimestamp === null) {
+    window.initialLatestTimestamp = latest.timestamp || 0;
+  }
+  
+  const isNewReading = latest.timestamp && latest.timestamp > window.initialLatestTimestamp;
 
-  // Map VigiMat data to existing UI state S with Perceptual Jitter for presentation
+  if (isNewReading) {
+    window.initialLatestTimestamp = latest.timestamp;
+    if (!window.startupPeriodElapsed) {
+      window.newReadingReceivedDuringStartup = true;
+    } else {
+      resetInactivityTimer();
+    }
+  }
+
+  if (!window.startupPeriodElapsed) {
+    S.systemStatus = 'inactive';
+  }
+
+  // Detect whether each node is online based on whether a positive temperature reading is received
+  const tx1Active = S.systemStatus === 'active' && latest.temp1 !== undefined && parseFloat(latest.temp1) > 0;
+  const tx2Active = S.systemStatus === 'active' && latest.temp2 !== undefined && parseFloat(latest.temp2) > 0;
+
+  // Map VigiMat data directly without artificial jitter/mocks
   S.tx1 = { 
-    t: jitter(latest.temp1 || 0, 1.2), 
-    h: randI(64, 82), 
-    w: (latest.rain1 < 2000), // Assuming lower value means water present (typical for these sensors)
-    rssi: jitter(-60, 4), 
-    on: !!latest.temp1 
+    t: latest.temp1 || 0, 
+    h: latest.hum1 || 0, 
+    w: (latest.rain1 < 2000), 
+    rssi: tx1Active ? -65 : -110, 
+    on: tx1Active,
+    stagnation: result.summary.tx1Stagnation || 0
   };
   
   S.tx2 = { 
-    t: jitter(latest.temp2 || 0, 1.2), 
-    h: randI(64, 82), 
+    t: latest.temp2 || 0, 
+    h: latest.hum2 || 0, 
     w: (latest.rain2 < 2000), 
-    rssi: jitter(-65, 4), 
-    on: !!latest.temp2 
+    rssi: tx2Active ? -70 : -110, 
+    on: tx2Active,
+    stagnation: result.summary.tx2Stagnation || 0
   };
 
-  // Calculate IRM strictly using the mathematical formula based on current sensor states
-  S.irm = calcIRM(S.tx1, S.tx2);
-  S.risk = riskOf(S.irm);
-  S.stagnationMsg = result.summary.stagnationMsg;
-  S.tx1Stagnation = result.summary.tx1Stagnation;
-  S.tx2Stagnation = result.summary.tx2Stagnation;
-  
-  // Sync totals and metadata
-  S.rx.pkts = result.summary.totalReadings;
-  S.rx.sync = new Date((latest.timestamp || 0) * 1000).toLocaleTimeString();
-  S.rx.lora = S.tx1.on || S.tx2.on;
+  // Calculate IRM per module and overall
+  if (S.systemStatus === 'active') {
+    // Overall IRM
+    S.irm = calcIRM(S.tx1, S.tx2);
+    // Per‑module IRM (using dummy inactive counterpart)
+    S.irmTx1 = calcIRM(S.tx1, {on:false,w:false,stagnation:0});
+    S.irmTx2 = calcIRM(S.tx2, {on:false,w:false,stagnation:0});
+    S.risk = riskOf(S.irm);
+
+    // Sync totals and metadata
+    S.rx.pkts = result.summary.totalReadings;
+    S.rx.sync = new Date((latest.timestamp || 0) * 1000).toLocaleTimeString();
+    S.rx.lora = S.tx1.on || S.tx2.on;
+  } else {
+    S.irm = 0;
+    S.risk = 'low';
+    S.stagnationMsg = '';
+    S.tx1Stagnation = 0;
+    S.tx2Stagnation = 0;
+    S.rx.pkts = 0;
+    S.rx.sync = '--:--:--';
+    S.rx.lora = false;
+  }
 
   // Sync Alerts with Deduplication
   const incomingAlerts = result.alerts.map(a => ({
@@ -225,33 +290,40 @@ function applyVigiMatToState(result) {
     rawTime: a.timestamp
   }));
 
-  incomingAlerts.forEach(na => {
-    const exists = S.alerts.some(oa => oa.rawTime === na.rawTime && oa.title === na.title);
-    if (!exists) {
-      S.alerts.unshift(na);
-      showToast(na.title, na.msg, na.sev, na.icon);
-      addEvt('SISTEMA', na.title, na.msg, na.sev === 'danger' ? 'danger' : 'warn');
+  if (S.systemStatus === 'active') {
+    incomingAlerts.forEach(na => {
+      const exists = S.alerts.some(oa => oa.rawTime === na.rawTime && oa.title === na.title);
+      if (!exists) {
+        S.alerts.unshift(na);
+        showToast(na.title, na.msg, na.sev, na.icon);
+        addEvt('SISTEMA', na.title, na.msg, na.sev === 'danger' ? 'danger' : 'warn');
+      }
+    });
+
+    // Keep last 20 alerts in history
+    S.alerts = S.alerts.slice(0, 20);
+    
+    updateBadge();
+    renderAlertLog();
+
+    syncMalariaWarningsFromAlerts(result);
+
+    // Populate history for charts
+    S.hist.lbl = result.chartData.temperature.map(d => d.timestamp).slice(-CFG.histMax);
+    S.hist.t1 = result.readings.map(r => r.temp1).reverse().slice(-CFG.histMax);
+    S.hist.t2 = result.readings.map(r => r.temp2).reverse().slice(-CFG.histMax);
+    S.hist.hum = result.chartData.humidity.map(d => d.value).slice(-CFG.histMax);
+    S.hist.irm = result.chartData.risk.map(d => d.value * 33).slice(-CFG.histMax); // Map 1,2,3 to 0-100 scale
+
+    if (isNewReading) {
+      triggerNewReadingIndicator('tx1');
+      triggerNewReadingIndicator('tx2');
     }
-  });
-
-  // Keep last 20 alerts in history
-  S.alerts = S.alerts.slice(0, 20);
-  
-  updateBadge();
-  renderAlertLog();
-
-  syncMalariaWarningsFromAlerts(result);
-
-  // Populate history for charts
-  S.hist.lbl = result.chartData.temperature.map(d => d.timestamp).slice(-CFG.histMax);
-  S.hist.t1 = result.readings.map(r => r.temp1).reverse().slice(-CFG.histMax);
-  S.hist.t2 = result.readings.map(r => r.temp2).reverse().slice(-CFG.histMax);
-  S.hist.hum = result.chartData.humidity.map(d => d.value).slice(-CFG.histMax);
-  S.hist.irm = result.chartData.risk.map(d => d.value * 33).slice(-CFG.histMax); // Map 1,2,3 to 0-100 scale
-
-  if (isNewReading) {
-    triggerNewReadingIndicator('tx1');
-    triggerNewReadingIndicator('tx2');
+  } else {
+    S.alerts = [];
+    updateBadge();
+    renderAlertLog();
+    S.hist = { lbl: [], t1: [], t2: [], hum: [], irm: [] };
   }
 }
 
@@ -300,16 +372,29 @@ function doAlerts(prev1,prev2){
   if(S.tx1.on&&!prev1.on){ addEvt('TX1','Ligação restabelecida','Comunicação activa','ok'); pushAlert('TX1 disponível','O sensor TX1 voltou a responder.','info','check'); }
   if(!S.tx2.on&&prev2.on){ addEvt('TX2','Ligação restabelecida','Comunicação activa','ok'); pushAlert('TX2 disponível','O sensor TX2 voltou a responder.','info','check'); }
   /* IRM level change */
-  const prev=riskOf(S.hist.irm.slice(-2)[0]||0);
-  if(S.risk!==prev){
+  const prev = riskOf(S.hist.irm.slice(-2)[0] || 0);
+  if (S.risk !== prev) {
     addEvt('Sistema','Nível de risco alterado',`${S.irm}/100 — ${riskPT(S.risk)}`,S.risk==='high'?'danger':S.risk==='medium'?'warn':'ok');
-    if(S.risk==='high')   pushAlert('Risco elevado',`O índice de risco subiu para ${S.irm}/100. Condições desfavoráveis.`,'danger','alert');
-    if(S.risk==='medium') pushAlert('Risco moderado',`O índice de risco está em ${S.irm}/100. Mantenha-se atento.`,'warn','warning');
+    if (S.risk==='high')   pushAlert('Risco elevado',`O índice de risco subiu para ${S.irm}/100. Condições desfavoráveis.`,'danger','alert');
+    if (S.risk==='medium') pushAlert('Risco moderado',`O índice de risco está em ${S.irm}/100. Mantenha-se atento.`,'warn','warning');
+    // Per‑node high‑risk detection moved outside this block
+    // Per‑node high‑risk detection
+    if (S.tx1.on) {
+      const irmTx1 = calcIRM(S.tx1, {on:false,w:false,stagnation:0});
+      if (irmTx1 >= 65) {
+        addEvt('TX1','Risco elevado',`Índice de risco ${irmTx1}/100`,'danger');
+        pushAlert('Risco elevado TX1',`O índice de risco para TX1 subiu para ${irmTx1}/100.`,'danger','alert');
+      }
+    }
+    if (S.tx2.on) {
+      const irmTx2 = calcIRM(S.tx2, {on:false,w:false,stagnation:0});
+      if (irmTx2 >= 65) {
+        addEvt('TX2','Risco elevado',`Índice de risco ${irmTx2}/100`,'danger');
+        pushAlert('Risco elevado TX2',`O índice de risco para TX2 subiu para ${irmTx2}/100.`,'danger','alert');
+      }
+    }
+    addHistLog();
   }
-  /* Normal readings */
-  if(S.tx1.on) addEvt('TX1','Leitura periódica',`${S.tx1.t}°C / ${S.tx1.h}%`,'info');
-  if(S.tx2.on) addEvt('TX2','Leitura periódica',`${S.tx2.t}°C / ${S.tx2.h}%`,'info');
-  addHistLog();
 }
 
 function addEvt(dev,evt,val,st){
@@ -352,10 +437,19 @@ function renderAll(){
 
 /* ── KPIs ── */
 function renderKPIs(){
-  const avgT = S.tx1.on&&S.tx2.on ? ((S.tx1.t+S.tx2.t)/2).toFixed(1) : S.tx1.on?S.tx1.t:S.tx2.on?S.tx2.t:'--';
-  const avgH = S.tx1.on&&S.tx2.on ? ((S.tx1.h+S.tx2.h)/2).toFixed(1) : S.tx1.on?S.tx1.h:S.tx2.on?S.tx2.h:'--';
-  set('kpi-temp', avgT!=='--'?`${avgT}°C`:'--');
-  set('kpi-hum',  avgH!=='--'?`${avgH}%` :'--');
+  /* Temperatura — TX1 e TX2 individualmente (sem média) */
+  const t1Str = S.tx1.on ? `${S.tx1.t}°C` : '--°C';
+  const t2Str = S.tx2.on ? `${S.tx2.t}°C` : '--°C';
+  const kpiTemp = document.getElementById('kpi-temp');
+  if (kpiTemp) kpiTemp.innerHTML = `TX1: <strong>${t1Str}</strong><br>TX2: <strong>${t2Str}</strong>`;
+
+  /* Humidade — TX1 e TX2 individualmente (sem média) */
+  const h1Str = S.tx1.on ? `${S.tx1.h}%` : '--%';
+  const h2Str = S.tx2.on ? `${S.tx2.h}%` : '--%';
+  const kpiHum = document.getElementById('kpi-hum');
+  if (kpiHum) kpiHum.innerHTML = `TX1: <strong>${h1Str}</strong><br>TX2: <strong>${h2Str}</strong>`;
+
+  /* Água */
   const wc=(S.tx1.w?1:0)+(S.tx2.on&&S.tx2.w?1:0);
   const we=document.getElementById('kpi-water');
   if(we){ we.textContent=wc?`${wc} sensor(es)`:'Não detectada'; we.style.color=wc?'var(--danger)':'var(--accent2)'; }
@@ -377,14 +471,15 @@ function renderKPIs(){
   const pill=document.getElementById('kpi-risk-pill');
   if(pill){ pill.textContent=riskPT(S.risk); pill.className=`risk-pill ${S.risk}`; }
 
+  /* Hints contextuais baseados em TX1 (sensor de referência primário) */
   const tempHint = document.getElementById('kpi-temp-h');
-  if (tempHint && avgT !== '--') {
-    const t = parseFloat(avgT);
+  if (tempHint && S.tx1.on) {
+    const t = S.tx1.t;
     tempHint.textContent = t >= 25 && t <= 35 ? 'Condição favorável a mosquitos' : t > 35 ? 'Calor elevado' : 'Temperatura baixa';
   }
   const humHint = document.getElementById('kpi-hum-h');
-  if (humHint && avgH !== '--') {
-    const h = parseFloat(avgH);
+  if (humHint && S.tx1.on) {
+    const h = S.tx1.h;
     humHint.textContent = h >= 70 ? 'Humidade elevada' : h >= 50 ? 'Humidade moderada' : 'Ar relativamente seco';
   }
 }
@@ -392,18 +487,25 @@ function renderKPIs(){
 /* ── TX CARD ── */
 function renderTX(id){
   const tx=S[id];
-  const stagCount = S[`${id}Stagnation`] || 0;
-  
-  /* risk pill */
+
+  /* Per‑module IRM: treat the other transmitter as offline */
+  const irmVal = tx.on ? calcIRM(tx, {on:false,w:false,stagnation:0}) : 0;
+  const irmRisk = riskOf(irmVal);
+
+  /* IRM value display */
+  const irmEl = document.getElementById(`${id}-irm`);
+  if (irmEl) {
+    irmEl.textContent = tx.on ? `${irmVal}/100` : '--';
+    const irmColors = { low:'var(--accent2)', medium:'var(--warn)', high:'var(--danger)' };
+    irmEl.style.color = tx.on ? irmColors[irmRisk] : 'var(--text3)';
+    irmEl.style.fontWeight = irmRisk === 'high' ? '700' : '600';
+  }
+
+  /* risk pill — based on IRM */
   const rp = document.getElementById(`${id}-risk-pill`);
   if (rp) {
-    let risk = 'low';
-    let label = 'RISCO BAIXO';
-    if (stagCount >= 6) { risk = 'high'; label = 'RISCO ALTO'; }
-    else if (stagCount >= 4) { risk = 'medium'; label = 'RISCO MÉDIO'; }
-    
-    rp.className = `risk-pill ${risk}`;
-    rp.textContent = label;
+    rp.className = `risk-pill ${irmRisk}`;
+    rp.textContent = `RISCO ${riskPT(irmRisk)}`;
     rp.style.display = tx.on ? 'inline-block' : 'none';
   }
 
@@ -433,8 +535,6 @@ function renderTX(id){
 function renderRX(){
   set('rx-pkts', S.rx.pkts);
   set('rx-sync', S.rx.sync);
-  const wEl=document.getElementById('rx-wifi');
-  if(wEl){ wEl.textContent=S.rx.wifi?'LIGADO':'DESLIGADO'; wEl.className=`rxs-val ${S.rx.wifi?'online':'offline'}`; }
   const lEl=document.getElementById('rx-lora');
   if(lEl){
     if (S.systemStatus === 'inactive') {
@@ -1219,7 +1319,6 @@ async function boot(){
   
   if (CFG.useRealData) {
     initFirebase();
-    resetInactivityTimer();
   } else {
     renderAll();
     renderMalariaWarnings();
@@ -1228,6 +1327,22 @@ async function boot(){
 
   renderDistanceTests();
   
+  // Período de Boot/Inicialização de 20 segundos
+  setTimeout(() => {
+    window.startupPeriodElapsed = true;
+    if (window.newReadingReceivedDuringStartup && window.lastVigiMatResult) {
+      S.systemStatus = 'active';
+      resetInactivityTimer();
+      applyVigiMatToState(window.lastVigiMatResult);
+      renderAll();
+      showToast('Sistema Activo', 'Dados confirmados após período de inicialização.', 'info', 'satellite');
+    } else {
+      S.systemStatus = 'inactive';
+      renderAll();
+      showToast('Aviso de Ligação', 'Nenhuma nova entrada detectada. O sistema permanece offline.', 'warning', 'signal');
+    }
+  }, 20000);
+
   setTimeout(() => showToast('PRO-VigiMAT activo', 'A receber dados das zonas monitorizadas.', 'info', 'satellite'), 600);
 }
 

@@ -1,144 +1,186 @@
 /*
- * VigiMat - Transmissor LoRa (nó com DHT11 + FC37)
+ * VigiMat - Transmissor LoRa
  * 
- * Lê temperatura, humidade (DHT11) e nível de água (FC37).
- * Envia os dados via LoRa (433 MHz) para o recetor central.
+ * DESCRIÇÃO: Módulo transmissor do sistema VigiMat.
+ * Realiza a leitura de sensores ambientais e transmite os dados
+ * via rádio frequência (LoRa) para o recetor central.
  * 
- * VERSÃO SIMULADA: Gera dados aleatórios para simular um ambiente real.
+ * HARDWARE:
+ * - ESP32 DevKit V1
+ * - Módulo LoRa SX1278 (433 MHz)
+ * - Sensor DHT11 (Temperatura e Humidade)
+ * - Sensor FC-37 (Detecção de Água/Chuva)
+ * 
+ * FUNCIONAMENTO:
+ * - A cada 30 segundos, lê os sensores
+ * - Empacota os dados em formato CSV
+ * - Transmite via LoRa para o recetor
  */
 
 #include <SPI.h>
 #include <LoRa.h>
+#include <DHT.h>
 
-// ========== CONFIGURAÇÕES DO NÓ ==========
-#define NODE_ID 1               // 1 ou 2 (alterar em cada ESP32)
+// ========================== CONFIGURAÇÕES ==========================
+// Identificador do nó (definir 1 ou 2 conforme o hardware)
+#define NODE_ID 1
 
-// Pinos LoRa (SX1278)
+// Pinos dos sensores
+#define DHT_PIN   2        // DHT11 - Data
+#define RAIN_PIN  34        // FC-37 - Saída Analógica
+
+#define DHT_TYPE DHT11
+
+// Pinos do módulo LoRa
 #define LORA_SS   5
 #define LORA_RST  14
 #define LORA_DIO0 2
 
-// Frequência LoRa (433 MHz)
+// Frequência de operação (433 MHz)
 #define LORA_FREQ 433E6
 
-// Intervalo entre envios (30 segundos)
+// Intervalo entre leituras e transmissões
 #define SEND_INTERVAL 30000
 
-// Limiar para detecção de água (valor analógico < 2000 = molhado)
-#define RAIN_THRESHOLD 2000
+// Limiar para detecção de água (leitura analógica)
+#define RAIN_THRESHOLD 2500
 
-// ========== ESTADO DA SIMULAÇÃO ==========
-float current_temp = 28.0;
-float current_hum = 75.0;
-bool is_raining = false;
-unsigned long next_event_time = 0;
+// ========================== OBJETOS ==========================
+DHT dht(DHT_PIN, DHT_TYPE);
 
-// ========== FUNÇÕES ==========
+// ========================== VARIÁVEIS ==========================
+unsigned long lastSendTime = 0;
+float temperature = 0;
+float humidity = 0;
+int rainValue = 0;
+bool waterDetected = false;
+int packetCounter = 0;
+
+// ========================== FUNÇÕES ==========================
+
+/*
+ * setupLoRa()
+ * Inicializa o módulo LoRa com os parâmetros de configuração.
+ * Define frequência, fator de espalhamento, potência e CRC.
+ */
 void setupLoRa() {
-  Serial.print("Inicializando LoRa...");
+  Serial.print("Inicializando LoRa (433 MHz)...");
   LoRa.setPins(LORA_SS, LORA_RST, LORA_DIO0);
+  
   if (!LoRa.begin(LORA_FREQ)) {
-    Serial.println(" Falha!");
-    while (1);
+    Serial.println(" FALHA!");
+    Serial.println("Verifique as ligações do módulo LoRa.");
+    while (1) {
+      delay(1000);
+      Serial.print(".");
+    }
   }
-  LoRa.setSyncWord(0xF3);       // Palavra de sincronismo (igual no recetor)
+  
+  LoRa.setSyncWord(0xF3);
   LoRa.setSpreadingFactor(12);
   LoRa.setCodingRate4(5);
   LoRa.setTxPower(17);
-  Serial.printf(" OK (freq %.0f MHz)\n", LORA_FREQ/1e6);
+  LoRa.enableCrc();
+  
+  Serial.println(" OK!");
+  Serial.printf("  Frequência: %.0f MHz\n", LORA_FREQ / 1e6);
+  Serial.printf("  Spreading Factor: %d\n", 12);
+  Serial.printf("  Potência: %d dBm\n\n", 17);
 }
 
-// Função para gerar dados de sensores simulados e realistas
-void generateSimulatedData(float &temp, float &hum, int &rainValue, bool &water) {
-  // 1. Simular mudança de chuva
-  if (millis() > next_event_time) {
-    is_raining = !is_raining;
-    Serial.printf("\n*** EVENTO SIMULADO: %s ***\n\n", is_raining ? "Chuva começou" : "Chuva parou");
-    // Próximo evento em 2 a 5 minutos
-    next_event_time = millis() + random(120000, 300000); 
-  }
-
-  // 2. Simular flutuação de temperatura e humidade
-  // Adiciona um "ruído" suave aos valores base
-  float temp_jitter = (random(-5, 6) / 10.0); // +/- 0.5 graus
-  float hum_jitter = (random(-10, 11) / 10.0); // +/- 1.0 %
-  
-  current_temp += temp_jitter;
-  current_hum += hum_jitter;
-
-  // Ajusta humidade se estiver a chover
-  if (is_raining) {
-    current_hum += 0.5;
-  } else {
-    current_hum -= 0.2;
-  }
-
-  // Manter os valores dentro de limites realistas
-  if (current_temp < 22.0) current_temp = 22.0;
-  if (current_temp > 34.0) current_temp = 34.0;
-  if (current_hum < 60.0) current_hum = 60.0;
-  if (current_hum > 98.0) current_hum = 98.0;
-
-  temp = current_temp;
-  hum = current_hum;
-
-  // 3. Simular valor do sensor de chuva
-  if (is_raining) {
-    rainValue = random(800, 1500); // Valor baixo = molhado
-  } else {
-    rainValue = random(3000, 4000); // Valor alto = seco
+/*
+ * readSensors()
+ * Efetua a leitura dos sensores conectados ao ESP32.
+ * - DHT11: temperatura e humidade (com 3 tentativas)
+ * - FC-37: leitura analógica para detecção de água
+ */
+void readSensors() {
+  int attempts = 3;
+  while (attempts--) {
+    temperature = dht.readTemperature();
+    humidity = dht.readHumidity();
+    
+    if (!isnan(temperature) && !isnan(humidity)) {
+      break;
+    }
+    delay(200);
   }
   
-  water = (rainValue < RAIN_THRESHOLD);
+  if (isnan(temperature) || isnan(humidity)) {
+    Serial.println("  [ERRO] Falha na leitura do DHT11");
+  }
+  
+  rainValue = analogRead(RAIN_PIN);
+  waterDetected = (rainValue < RAIN_THRESHOLD);
 }
 
-void sendLoRaPacket(float temp, float hum, int rainValue, bool water) {
-  // Formato: ID, temperatura, humidade, valor_analogico_agua, agua_detectada
+/*
+ * sendLoRaPacket()
+ * Constrói o pacote no formato CSV e transmite via LoRa.
+ * Formato: NODE_ID,temperatura,humidade,chuva,agua_detectada
+ */
+void sendLoRaPacket() {
   String packet = String(NODE_ID) + "," +
-                  String(temp, 1) + "," +
-                  String(hum, 1) + "," +
+                  String(temperature, 1) + "," +
+                  String(humidity, 1) + "," +
                   String(rainValue) + "," +
-                  (water ? "1" : "0");
+                  (waterDetected ? "1" : "0");
   
-  Serial.print("Enviando: ");
+  Serial.print("  Transmitindo: ");
   Serial.println(packet);
   
   LoRa.beginPacket();
   LoRa.print(packet);
   LoRa.endPacket();
+  
+  packetCounter++;
 }
 
+// ========================== SETUP ==========================
 void setup() {
   Serial.begin(115200);
-  Serial.printf("\n--- Transmissor LoRa SIMULADO (Nó %d) ---\n", NODE_ID);
+  Serial.println("\n========================================");
+  Serial.println("  VIGIMAT - TRANSMISSOR LoRa");
+  Serial.printf("  Nó ID: %d\n", NODE_ID);
+  Serial.println("========================================\n");
   
-  // Inicializa LoRa
+  dht.begin();
+  analogReadResolution(12);
+  pinMode(RAIN_PIN, INPUT);
+  
+  Serial.println("Teste inicial dos sensores:");
+  float testTemp = dht.readTemperature();
+  float testHum = dht.readHumidity();
+  int testRain = analogRead(RAIN_PIN);
+  
+  Serial.printf("  DHT11: T=%.1f°C H=%.1f%%\n", testTemp, testHum);
+  Serial.printf("  FC-37: %d (%s)\n", testRain, (testRain < RAIN_THRESHOLD) ? "MOLHADO" : "SECO");
+  Serial.println();
+  
   setupLoRa();
   
-  // Define o tempo para o primeiro evento de simulação (10-30s)
-  next_event_time = millis() + random(10000, 30000);
-  
-  Serial.printf("Intervalo de envio: %d segundos.\n\n", SEND_INTERVAL/1000);
+  Serial.printf("Intervalo de transmissão: %d segundos\n", SEND_INTERVAL / 1000);
+  Serial.println("Aguardando próximo ciclo...\n");
 }
 
+// ========================== LOOP ==========================
 void loop() {
-  static unsigned long lastSend = 0;
-  if (millis() - lastSend >= SEND_INTERVAL) {
-    lastSend = millis();
+  unsigned long now = millis();
+  
+  if (now - lastSendTime >= SEND_INTERVAL) {
+    lastSendTime = now;
     
-    float temp, hum;
-    int rainVal;
-    bool water;
+    Serial.printf("--- Ciclo %d ---\n", packetCounter + 1);
     
-    generateSimulatedData(temp, hum, rainVal, water);
+    readSensors();
     
-    Serial.println("--- Leitura dos sensores (SIMULADO) ---");
-    Serial.printf("Temperatura: %.1f°C\n", temp);
-    Serial.printf("Humidade: %.1f%%\n", hum);
-    Serial.printf("Sensor Chuva: %d (%s)\n", rainVal, water ? "ÁGUA DETECTADA" : "SECO");
+    Serial.printf("  DHT11: T=%.1f°C H=%.1f%%\n", temperature, humidity);
+    Serial.printf("  FC-37: %d %s\n", rainValue, waterDetected ? "MOLHADO" : "SECO");
     
-    sendLoRaPacket(temp, hum, rainVal, water);
-    Serial.println("-------------------------------------\n");
+    sendLoRaPacket();
+    
+    Serial.printf("  Pacotes transmitidos: %d\n\n", packetCounter);
   }
+  
   delay(100);
 }

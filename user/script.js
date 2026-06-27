@@ -41,6 +41,13 @@ let riskChart    = null;
 let tempChart    = null;
 let inactivityTimer;
 
+/* ── BOOT CONTROL STATE ── */
+let startupPeriodElapsed = false;
+let newReadingReceivedDuringStartup = false;
+let lastVigiMatResult = null;
+let systemStatus = 'inactive';
+window.initialLatestTimestamp = null;
+
 /* ── UTILS ── */
 const nowTime = () => new Date().toLocaleTimeString('pt-PT', { hour12: false });
 const today   = () => new Date().toLocaleDateString('pt-PT', { weekday: 'long', day: '2-digit', month: 'long' });
@@ -129,10 +136,22 @@ function updateUI(data) {
   }
   setTrend('tr-temp2', summary.temperatureTrend);
 
-  // Humidity
-  el('sv-hum').textContent = `${summary.averageHumidity.toFixed(1)}%`;
-  el('bf-hum').style.width = `${Math.min(100, summary.averageHumidity)}%`;
+  // Humidity — TX1 e TX2 individuais (sem média)
+  const hum1Raw = latest.hum1 !== undefined ? parseFloat(latest.hum1) : null;
+  const hum2Raw = latest.hum2 !== undefined ? parseFloat(latest.hum2) : null;
+
+  if (hum1Raw !== null) {
+    el('sv-hum').textContent = `${hum1Raw.toFixed(1)}%`;
+    el('bf-hum').style.width = `${Math.min(100, hum1Raw)}%`;
+  }
+  if (hum2Raw !== null) {
+    const svHum2 = el('sv-hum2');
+    const bfHum2 = el('bf-hum2');
+    if (svHum2) svHum2.textContent = `${hum2Raw.toFixed(1)}%`;
+    if (bfHum2) bfHum2.style.width = `${Math.min(100, hum2Raw)}%`;
+  }
   setTrend('tr-hum', summary.humidityTrend);
+  setTrend('tr-hum2', summary.humidityTrend);
 
   // Water presence
   const r1 = latest.rain1;
@@ -443,17 +462,56 @@ function init() {
   VigiMat.init();
   VigiMat.firebase.onReadingsUpdate((raw) => {
     if (raw.length > 0) {
-      resetInactivity();
       const data = VigiMat.processData(raw);
-      updateUI(data);
+      lastVigiMatResult = data;
 
-      el('conn-dot').className  = 'conn-dot online';
-      el('conn-text').textContent = 'Actualizado agora';
-      el('drawer-conn-dot').className = 'conn-dot online';
+      const latest = data.readings[0] || {};
+      
+      if (window.initialLatestTimestamp === null) {
+        window.initialLatestTimestamp = latest.timestamp || 0;
+      }
+
+      const isNewReading = latest.timestamp && latest.timestamp > window.initialLatestTimestamp;
+
+      if (isNewReading) {
+        window.initialLatestTimestamp = latest.timestamp;
+        if (!startupPeriodElapsed) {
+          newReadingReceivedDuringStartup = true;
+        } else {
+          systemStatus = 'active';
+          resetInactivity();
+        }
+      }
+
+      if (systemStatus === 'active') {
+        resetInactivity();
+        updateUI(data);
+        el('conn-dot').className  = 'conn-dot online';
+        el('conn-text').textContent = 'Actualizado agora';
+        el('drawer-conn-dot').className = 'conn-dot online';
+      } else {
+        el('conn-dot').className  = 'conn-dot offline';
+        el('conn-text').textContent = startupPeriodElapsed ? 'Inactivo — sem dados > 1 min' : 'A aguardar validação (20s)...';
+        el('drawer-conn-dot').className = 'conn-dot offline';
+      }
     }
   });
 
-  resetInactivity();
+  // Período de Boot/Inicialização de 20 segundos
+  setTimeout(() => {
+    startupPeriodElapsed = true;
+    if (newReadingReceivedDuringStartup && lastVigiMatResult) {
+      systemStatus = 'active';
+      resetInactivity();
+      updateUI(lastVigiMatResult);
+      el('conn-dot').className  = 'conn-dot online';
+      el('conn-text').textContent = 'Actualizado agora';
+      el('drawer-conn-dot').className = 'conn-dot online';
+    } else {
+      systemStatus = 'inactive';
+      handleInactivity();
+    }
+  }, 20000);
 }
 
 document.addEventListener('DOMContentLoaded', init);

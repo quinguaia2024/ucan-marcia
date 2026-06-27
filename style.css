@@ -643,3 +643,21 @@ input[type="number"]:focus, select:focus { border-color: var(--accent); box-shad
 @media(max-width:380px){
   .kpi-grid { grid-template-columns: 1fr; }
 }
+
+/* ── IRM per‑module metric inside TX cards ── */
+.txm-irm {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--border2);
+  margin-top: 0.2rem;
+  padding-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.txm-irm-val {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  transition: color 0.4s;
+}

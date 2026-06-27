@@ -41,7 +41,7 @@ class FirebaseService {
 
     onReadingsUpdate(callback) {
         if (!this.db) return;
-        const readingsRef = this.db.ref('readings');
+        const readingsRef = this.db.ref('readings').limitToLast(30);
         readingsRef.on('value', (snapshot) => {
             const data = snapshot.val();
             // Handle Firebase object structure or array
@@ -64,12 +64,12 @@ class ValidationService {
     static isValid(r) {
         if (!r) return false;
         
-        // Módulo 2 rules
-        const hasRequiredFields = r.timestamp && r.avgTemp !== undefined && r.avgHum !== undefined;
+        // Módulo 2 rules (checks the primary readings of node 1)
+        const hasRequiredFields = r.timestamp && r.temp1 !== undefined && r.hum1 !== undefined;
         if (!hasRequiredFields) return false;
 
-        const isTempValid = r.avgTemp >= 0 && r.avgTemp <= 60;
-        const isHumValid = r.avgHum >= 0 && r.avgHum <= 100;
+        const isTempValid = r.temp1 >= 0 && r.temp1 <= 60;
+        const isHumValid = r.hum1 >= 0 && r.hum1 <= 100;
         const isRainValid = (r.rain1 === undefined || (r.rain1 >= 0 && r.rain1 <= 4095)) &&
                             (r.rain2 === undefined || (r.rain2 >= 0 && r.rain2 <= 4095));
 
@@ -82,13 +82,91 @@ class ValidationService {
  */
 class ReadingService {
     static process(rawList) {
+        // Sanitize and parse all stringified values into clean numeric types
+        const sanitized = rawList.map(r => {
+            return {
+                ...r,
+                timestamp: r.timestamp ? parseInt(r.timestamp, 10) : null,
+                temp1: r.temp1 !== undefined ? parseFloat(r.temp1) : undefined,
+                temp2: r.temp2 !== undefined ? parseFloat(r.temp2) : undefined,
+                hum1: r.hum1 !== undefined ? parseFloat(r.hum1) : undefined,
+                hum2: r.hum2 !== undefined ? parseFloat(r.hum2) : undefined,
+                avgTemp: r.avgTemp !== undefined ? parseFloat(r.avgTemp) : undefined,
+                avgHum: r.avgHum !== undefined ? parseFloat(r.avgHum) : undefined,
+                rain1: r.rain1 !== undefined ? parseInt(r.rain1, 10) : undefined,
+                rain2: r.rain2 !== undefined ? parseInt(r.rain2, 10) : undefined
+            };
+        });
+
         // Validation and Filter
-        const validReadings = rawList.filter(ValidationService.isValid);
+        const validReadings = sanitized.filter(ValidationService.isValid);
         
         // Módulo 1: Ordenação (Mais recente -> Mais antigo)
-        return validReadings.sort((a, b) => b.timestamp - a.timestamp);
-    }
+        const sorted = validReadings.sort((a, b) => b.timestamp - a.timestamp);
 
+        // Compute IRM and risk dynamically for each reading in chronological order
+        // to correctly calculate stagnation history
+        for (let i = sorted.length - 1; i >= 0; i--) {
+            const current = sorted[i];
+            const historicalSubset = sorted.slice(i); // readings from this one to the oldest
+            
+            const tx1Stagnation = AlertService.checkStagnation(historicalSubset, 'rain1');
+            const tx2Stagnation = AlertService.checkStagnation(historicalSubset, 'rain2');
+            
+            const t1 = current.temp1 || 0;
+            const t2 = current.temp2 || 0;
+            const h1 = current.hum1 || 0;
+            const h2 = current.hum2 || 0;
+            const w1 = current.rain1 < 2000;
+            const w2 = current.rain2 < 2000;
+
+            const tx1Active = t1 > 0;
+            const tx2Active = t2 > 0;
+
+            let t, h;
+            if (tx1Active && tx2Active) {
+                t = (t1 + t2) / 2;
+                h = (h1 + h2) / 2;
+            } else if (tx1Active) {
+                t = t1;
+                h = h1;
+            } else if (tx2Active) {
+                t = t2;
+                h = h2;
+            } else {
+                t = 0; h = 0;
+            }
+
+            let ts = 0;
+            if (t >= 25 && t <= 35)    ts = 40 * (1 - Math.abs(t - 30) / 10);
+            else if (t > 35)       ts = Math.max(0, 40 - (t - 35) * 3);
+            else                ts = Math.max(0, 20 - (25 - t) * 4);
+
+            const hs = Math.max(0, Math.min(35, ((h - 40) / 60) * 35));
+            const water = (tx1Active && w1 ? 1 : 0) + (tx2Active && w2 ? 1 : 0);
+
+            let irm = 0;
+            if (tx1Active || tx2Active) {
+                if (water === 0) {
+                    irm = Math.round(Math.max(0, Math.min(30, ts + hs))); // Capped at 30 (Low risk) when no water is detected
+                } else {
+                    let ws = 0;
+                    if (tx1Active && w1) {
+                        ws += Math.min(12.5, 5 + tx1Stagnation * 1.25);
+                    }
+                    if (tx2Active && w2) {
+                        ws += Math.min(12.5, 5 + tx2Stagnation * 1.25);
+                    }
+                    irm = Math.round(Math.max(0, Math.min(100, ts + hs + ws)));
+                }
+            }
+
+            current.irm = irm;
+            current.risk = irm >= 65 ? "ALTO" : irm >= 35 ? "MEDIO" : "BAIXO";
+        }
+
+        return sorted;
+    }
     // Módulo 7 — Filtros
     static filterByRange(readings, range) {
         const now = Date.now() / 1000; // Firebase uses seconds based on prompt example
