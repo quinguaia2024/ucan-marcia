@@ -68,6 +68,7 @@ const rand  = (a,b) => +(Math.random()*(b-a)+a).toFixed(1);
 const randI = (a,b) => Math.floor(Math.random()*(b-a+1))+a;
 const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
 const jitter = (v, range) => +(v + (Math.random() - 0.5) * range).toFixed(1);
+const fmt   = (v) => (parseFloat(v) || 0).toFixed(1);  // 1 decimal place
 const now   = () => new Date().toLocaleTimeString('pt-BR',{hour12:false});
 const today = () => new Date().toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
 
@@ -363,8 +364,8 @@ async function simulate() {
 ══════════════════════════════════════════════════ */
 function doAlerts(prev1,prev2){
   /* Water */
-  if(S.tx1.w  &&!prev1.w) { addEvt('TX1','Água detectada',`${S.tx1.t}°C/${S.tx1.h}%`,'danger'); pushAlert('Água na zona TX1',`Foi detectada água parada. Temperatura ${S.tx1.t}°C, humidade ${S.tx1.h}%.`,'danger','water'); }
-  if(S.tx2.on&&S.tx2.w&&!prev2.w){ addEvt('TX2','Água detectada',`${S.tx2.t}°C/${S.tx2.h}%`,'danger'); pushAlert('Água na zona TX2',`Foi detectada água parada. Temperatura ${S.tx2.t}°C, humidade ${S.tx2.h}%.`,'danger','water'); }
+  if(S.tx1.w  &&!prev1.w) { addEvt('TX1','Água detectada',`${fmt(S.tx1.t)}°C/${fmt(S.tx1.h)}%`,'danger'); pushAlert('Água na zona TX1',`Foi detectada água parada. Temperatura ${fmt(S.tx1.t)}°C, humidade ${fmt(S.tx1.h)}%.`,'danger','water'); }
+  if(S.tx2.on&&S.tx2.w&&!prev2.w){ addEvt('TX2','Água detectada',`${fmt(S.tx2.t)}°C/${fmt(S.tx2.h)}%`,'danger'); pushAlert('Água na zona TX2',`Foi detectada água parada. Temperatura ${fmt(S.tx2.t)}°C, humidade ${fmt(S.tx2.h)}%.`,'danger','water'); }
   /* Offline */
   if(!S.tx1.on&&prev1.on){ addEvt('TX1','Sem comunicação','Sem resposta','danger'); pushAlert('TX1 indisponível','O sensor TX1 deixou de responder.','danger','signal'); }
   if(!S.tx2.on&&prev2.on){ addEvt('TX2','Sem comunicação','Sem resposta','danger'); pushAlert('TX2 indisponível','O sensor TX2 deixou de responder.','danger','signal'); }
@@ -438,14 +439,14 @@ function renderAll(){
 /* ── KPIs ── */
 function renderKPIs(){
   /* Temperatura — TX1 e TX2 individualmente (sem média) */
-  const t1Str = S.tx1.on ? `${S.tx1.t}°C` : '--°C';
-  const t2Str = S.tx2.on ? `${S.tx2.t}°C` : '--°C';
+  const t1Str = S.tx1.on ? `${fmt(S.tx1.t)}°C` : '--°C';
+  const t2Str = S.tx2.on ? `${fmt(S.tx2.t)}°C` : '--°C';
   const kpiTemp = document.getElementById('kpi-temp');
   if (kpiTemp) kpiTemp.innerHTML = `TX1: <strong>${t1Str}</strong><br>TX2: <strong>${t2Str}</strong>`;
 
   /* Humidade — TX1 e TX2 individualmente (sem média) */
-  const h1Str = S.tx1.on ? `${S.tx1.h}%` : '--%';
-  const h2Str = S.tx2.on ? `${S.tx2.h}%` : '--%';
+  const h1Str = S.tx1.on ? `${fmt(S.tx1.h)}%` : '--%';
+  const h2Str = S.tx2.on ? `${fmt(S.tx2.h)}%` : '--%';
   const kpiHum = document.getElementById('kpi-hum');
   if (kpiHum) kpiHum.innerHTML = `TX1: <strong>${h1Str}</strong><br>TX2: <strong>${h2Str}</strong>`;
 
@@ -516,8 +517,8 @@ function renderTX(id){
   const la=document.getElementById(`${id}-lora`);
   if(la) la.className=`lora-bars${tx.on?'':' off'}`;
   /* metrics */
-  set(`${id}-temp`,  tx.on?`${tx.t}°C`:'--');
-  set(`${id}-hum`,   tx.on?`${tx.h}%` :'--');
+  set(`${id}-temp`,  tx.on?`${fmt(tx.t)}°C`:'--');
+  set(`${id}-hum`,   tx.on?`${fmt(tx.h)}%` :'--');
   set(`${id}-rssi`,  tx.on?`${tx.rssi} dBm`:'--');
   const wEl=document.getElementById(`${id}-water`);
   if(wEl){
@@ -605,12 +606,12 @@ function fillBar(id,pct){
 
 /* ── SENSOR DETAIL ── */
 function renderSensorDetail(){
-  set('sc-t1-temp', S.tx1.on?`${S.tx1.t}°C`:'--');
-  set('sc-t1-hum',  S.tx1.on?`${S.tx1.h}%` :'--');
+  set('sc-t1-temp', S.tx1.on?`${fmt(S.tx1.t)}°C`:'--');
+  set('sc-t1-hum',  S.tx1.on?`${fmt(S.tx1.h)}%` :'--');
   set('sc-t1-rssi', S.tx1.on?`${S.tx1.rssi} dBm`:'--');
   const s1=document.getElementById('sc-t1-state'); if(s1){ s1.textContent=S.tx1.on?'Online':'Offline'; s1.className=S.tx1.on?'online':'offline'; }
-  set('sc-t2-temp', S.tx2.on?`${S.tx2.t}°C`:'--');
-  set('sc-t2-hum',  S.tx2.on?`${S.tx2.h}%` :'--');
+  set('sc-t2-temp', S.tx2.on?`${fmt(S.tx2.t)}°C`:'--');
+  set('sc-t2-hum',  S.tx2.on?`${fmt(S.tx2.h)}%` :'--');
   set('sc-t2-rssi', S.tx2.on?`${S.tx2.rssi} dBm`:'--');
   const s2=document.getElementById('sc-t2-state'); if(s2){ s2.textContent=S.tx2.on?'Online':'Offline'; s2.className=S.tx2.on?'online':'offline'; }
   set('sc-rx-pkts', S.rx.pkts);
